@@ -45,7 +45,7 @@ export default async function SessionPage({
   const { data: photoRows } = await supabase
     .from("session_photos")
     .select(
-      "id, storage_path, view_type, created_at, landmarks, cervicomental_angle, interpupilar_angle, asymmetry_pct, brow_izq_angle, brow_der_angle"
+      "id, storage_path, view_type, created_at, landmarks, cervicomental_angle, interpupilar_angle, asymmetry_pct, brow_izq_angle, brow_der_angle, manual_nasofacial_angle, manual_nasolabial_angle, manual_mentolabial_angle"
     )
     .eq("session_id", id)
     .order("created_at", { ascending: false });

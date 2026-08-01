@@ -15,7 +15,12 @@ type Photo = {
   asymmetry_pct?: number | null;
   brow_izq_angle?: number | null;
   brow_der_angle?: number | null;
+  manual_nasofacial_angle?: number | null;
+  manual_nasolabial_angle?: number | null;
+  manual_mentolabial_angle?: number | null;
 };
+
+const LATERAL_VIEWS = ["lateral_izq", "lateral_der"];
 
 // Índices de los contornos oficiales de ceja (topología MediaPipe de 468 puntos)
 const LEFT_BROW = [276, 283, 282, 295, 285, 293, 334, 296, 336];
@@ -28,6 +33,44 @@ const VIEW_LABELS: Record<string, string> = {
   oblicua_izq: "Oblicua izquierda",
   oblicua_der: "Oblicua derecha",
 };
+
+type ManualAngleKey =
+  | "nasofacial"
+  | "nasolabial"
+  | "mentolabial"
+  | "cervicomental";
+
+const MANUAL_ANGLE_TYPES: {
+  value: ManualAngleKey;
+  label: string;
+  column: string;
+  hint: string;
+}[] = [
+  {
+    value: "nasofacial",
+    label: "Nasofacial",
+    column: "manual_nasofacial_angle",
+    hint: "Clic 1: glabela → Clic 2: punta nasal",
+  },
+  {
+    value: "nasolabial",
+    label: "Nasolabial",
+    column: "manual_nasolabial_angle",
+    hint: "Clic 1: base columela → Clic 2: borde bermellón superior",
+  },
+  {
+    value: "mentolabial",
+    label: "Mentolabial",
+    column: "manual_mentolabial_angle",
+    hint: "Clic 1: labio inferior → Clic 2: punto más anterior del mentón",
+  },
+  {
+    value: "cervicomental",
+    label: "Cervicomental",
+    column: "cervicomental_angle",
+    hint: "Clic 1: punto submentoniano → Clic 2: punto cervical anterior",
+  },
+];
 
 // Se carga una sola vez y se reutiliza para todas las fotos de la página.
 let landmarkerPromise: Promise<any> | null = null;
@@ -62,9 +105,14 @@ function PhotoCard({
   photo: Photo;
   canDelete: boolean;
 }) {
+  const isLateral = LATERAL_VIEWS.includes(photo.view_type ?? "");
+
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // ── MediaPipe (frontal) ──
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
     photo.landmarks ? "done" : "idle"
   );
@@ -83,6 +131,20 @@ function PhotoCard({
   const [browDer, setBrowDer] = useState<number | null>(
     photo.brow_der_angle ?? null
   );
+
+  // ── Medición manual (lateral) ──
+  const [angleType, setAngleType] = useState<ManualAngleKey>("nasofacial");
+  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualValues, setManualValues] = useState<
+    Record<ManualAngleKey, number | null>
+  >({
+    nasofacial: photo.manual_nasofacial_angle ?? null,
+    nasolabial: photo.manual_nasolabial_angle ?? null,
+    mentolabial: photo.manual_mentolabial_angle ?? null,
+    cervicomental: photo.cervicomental_angle ?? null,
+  });
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -148,8 +210,6 @@ function PhotoCard({
         return;
       }
 
-      // Todos los ángulos siguientes se calculan igual que en DermFace HTML,
-      // en píxeles reales de la foto (no en fracciones normalizadas).
       const W = img.naturalWidth;
       const H = img.naturalHeight;
       const pt = (i: number) => ({ x: lm[i].x * W, y: lm[i].y * H });
@@ -162,26 +222,22 @@ function PhotoCard({
       const rJaw = pt(397);
       const midX = (lEye.x + rEye.x) / 2;
 
-      // Cervicomental: eje nariz-mentón frente a la horizontal
       const cervDx = chin.x - nose.x;
       const cervDy = chin.y - nose.y;
       const cerv = Number(
         ((Math.atan2(Math.abs(cervDy), Math.abs(cervDx)) * 180) / Math.PI).toFixed(1)
       );
 
-      // Asimetría: diferencia horizontal entre hemicaras
       const asimPct = Number(
         ((Math.abs(lJaw.x - midX - (midX - rJaw.x)) / W) * 100).toFixed(1)
       );
 
-      // Interpupilar: inclinación de la línea entre ojos
       const eyeDx = rEye.x - lEye.x;
       const eyeDy = rEye.y - lEye.y;
       const interpDeg = Number(
         ((Math.atan2(Math.abs(eyeDy), Math.abs(eyeDx)) * 180) / Math.PI).toFixed(1)
       );
 
-      // Inclinación de cejas: extremo a extremo del contorno oficial
       function browTilt(idxArr: number[]) {
         const p0 = pt(idxArr[0]);
         const p1 = pt(idxArr[idxArr.length - 1]);
@@ -221,6 +277,37 @@ function PhotoCard({
     }
   }
 
+  function resetPoints() {
+    setPoints([]);
+  }
+
+  async function handleManualClick(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = wrapRef.current!.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const next = [...points, { x, y }];
+    setPoints(next);
+
+    if (next.length === 2) {
+      const dx = next[1].x - next[0].x;
+      const dy = next[1].y - next[0].y;
+      const deg = Number(
+        ((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI).toFixed(1)
+      );
+      const def = MANUAL_ANGLE_TYPES.find((a) => a.value === angleType)!;
+      setManualValues((prev) => ({ ...prev, [angleType]: deg }));
+      setManualSaving(true);
+      const supabase = createClient();
+      await supabase
+        .from("session_photos")
+        .update({ [def.column]: deg })
+        .eq("id", photo.id);
+      setManualSaving(false);
+    }
+  }
+
+  const currentType = MANUAL_ANGLE_TYPES.find((a) => a.value === angleType)!;
+
   return (
     <div className="bg-white border border-rule rounded-xl overflow-hidden">
       <div className="relative">
@@ -233,37 +320,126 @@ function PhotoCard({
             crossOrigin="anonymous"
           />
         )}
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none"
-        />
+        {!isLateral && (
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 w-full h-full pointer-events-none"
+          />
+        )}
+        {isLateral && (
+          <div
+            ref={wrapRef}
+            onClick={handleManualClick}
+            className="absolute inset-0 cursor-crosshair"
+          >
+            {points.map((p, i) => (
+              <span
+                key={i}
+                className="absolute w-2.5 h-2.5 bg-red-600 border border-white rounded-full -translate-x-1/2 -translate-y-1/2"
+                style={{ left: p.x, top: p.y }}
+              />
+            ))}
+            {points.length === 2 && (
+              <svg className="absolute inset-0 w-full h-full">
+                <line
+                  x1={points[0].x}
+                  y1={points[0].y}
+                  x2={points[1].x}
+                  y2={points[1].y}
+                  stroke="#dc2626"
+                  strokeWidth={2}
+                />
+              </svg>
+            )}
+          </div>
+        )}
       </div>
+
       <div className="px-2 py-1.5">
         <p className="text-xs text-mid">
           {VIEW_LABELS[photo.view_type ?? ""] ?? photo.view_type}
         </p>
-        <button
-          type="button"
-          onClick={handleDetect}
-          disabled={status === "loading"}
-          className="mt-1 text-xs bg-accent text-white rounded-full px-3 py-1 disabled:opacity-60"
-        >
-          {status === "loading"
-            ? "Detectando…"
-            : status === "done"
-            ? "Volver a detectar"
-            : "Detectar (MediaPipe)"}
-        </button>
-        {angle !== null && (
-          <div className="text-xs text-ink mt-1 space-y-0.5">
-            <p>Cervicomental: {angle}° <span className="text-mid">(normal 80–95°)</span></p>
-            {interpupilar !== null && <p>Interpupilar: {interpupilar}° <span className="text-mid">(ideal 0°)</span></p>}
-            {asymmetry !== null && <p>Asimetría: {asymmetry}%</p>}
-            {browIzq !== null && browDer !== null && (
-              <p>Cejas: izq. {browIzq}° / dcha. {browDer}° <span className="text-mid">(normal 10–20°)</span></p>
+
+        {!isLateral && (
+          <>
+            <button
+              type="button"
+              onClick={handleDetect}
+              disabled={status === "loading"}
+              className="mt-1 text-xs bg-accent text-white rounded-full px-3 py-1 disabled:opacity-60"
+            >
+              {status === "loading"
+                ? "Detectando…"
+                : status === "done"
+                ? "Volver a detectar"
+                : "Detectar (MediaPipe)"}
+            </button>
+            {angle !== null && (
+              <div className="text-xs text-ink mt-1 space-y-0.5">
+                <p>
+                  Cervicomental: {angle}°{" "}
+                  <span className="text-mid">(normal 80–95°)</span>
+                </p>
+                {interpupilar !== null && (
+                  <p>
+                    Interpupilar: {interpupilar}°{" "}
+                    <span className="text-mid">(ideal 0°)</span>
+                  </p>
+                )}
+                {asymmetry !== null && <p>Asimetría: {asymmetry}%</p>}
+                {browIzq !== null && browDer !== null && (
+                  <p>
+                    Cejas: izq. {browIzq}° / dcha. {browDer}°{" "}
+                    <span className="text-mid">(normal 10–20°)</span>
+                  </p>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
+
+        {isLateral && (
+          <>
+            <select
+              value={angleType}
+              onChange={(e) => {
+                setAngleType(e.target.value as ManualAngleKey);
+                resetPoints();
+              }}
+              className="mt-1 text-xs border border-rule rounded px-2 py-1 w-full"
+            >
+              {MANUAL_ANGLE_TYPES.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-mid mt-1">{currentType.hint}</p>
+            <div className="flex items-center justify-between mt-1">
+              <button
+                type="button"
+                onClick={resetPoints}
+                className="text-xs text-mid underline"
+              >
+                Reiniciar clics
+              </button>
+              {manualSaving && (
+                <span className="text-[10px] text-mid">Guardando…</span>
+              )}
+            </div>
+            <div className="text-xs text-ink mt-1 space-y-0.5">
+              {MANUAL_ANGLE_TYPES.map(
+                (a) =>
+                  manualValues[a.value] !== null && (
+                    <p key={a.value}>
+                      {a.label}: {manualValues[a.value]}°
+                    </p>
+                  )
+              )}
+            </div>
+          </>
+        )}
+
         {errorMsg && <p className="text-xs text-red-700 mt-1">{errorMsg}</p>}
         {canDelete && (
           <button
