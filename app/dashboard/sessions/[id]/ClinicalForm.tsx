@@ -47,6 +47,8 @@ type Tab = (typeof TABS)[number];
 type MerzScore = { rest: number | null; dyn: number | null };
 
 type ClinicalRow = {
+  edad: number | null;
+  sexo: string | null;
   motivo: string | null;
   previos: string | null;
   peso: number | null;
@@ -185,7 +187,104 @@ export default function ClinicalForm({
   const d = initialData;
   const informeRef = useRef<HTMLTextAreaElement>(null);
   const planRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [generating, setGenerating] = useState(false);
+
+  function getFormNumber(name: string): number {
+    const el = formRef.current?.elements.namedItem(name) as
+      | HTMLInputElement
+      | undefined;
+    const v = parseFloat(el?.value ?? "");
+    return isNaN(v) ? 0 : v;
+  }
+  function getFormValue(name: string): string {
+    const el = formRef.current?.elements.namedItem(name) as
+      | HTMLInputElement
+      | HTMLSelectElement
+      | undefined;
+    return el?.value ?? "";
+  }
+  function setSelectValue(name: string, value: number) {
+    const el = formRef.current?.elements.namedItem(name) as
+      | HTMLSelectElement
+      | undefined;
+    if (el) el.value = String(value);
+  }
+  function setInputValue(name: string, value: number) {
+    const el = formRef.current?.elements.namedItem(name) as
+      | HTMLInputElement
+      | undefined;
+    if (el) el.value = String(value);
+  }
+
+  function handleSuggestMerz() {
+    const edad = getFormNumber("edad");
+    if (!edad || edad < 18) {
+      alert("Introduce la edad de la paciente primero, en la pestaña Clasificación.");
+      return;
+    }
+    const hasManual = MERZ_GROUPS.some((g) =>
+      g.regions.some((r) => {
+        const rest = getFormValue(`merz_${r.id}_rest`);
+        const dyn = getFormValue(`merz_${r.id}_dyn`);
+        return rest !== "" || dyn !== "";
+      })
+    );
+    if (hasManual && !confirm("Ya hay valores Merz introducidos. ¿Sobreescribir con la estimación automática?")) {
+      return;
+    }
+    const smoke = getFormNumber("tabaco");
+    const b = edad < 35 ? 0.5 : edad < 45 ? 1 : edad < 55 ? 2 : edad < 65 ? 2.5 : 3;
+    MERZ_GROUPS.forEach((g) =>
+      g.regions.forEach((r) => {
+        let base = b;
+        if (r.id === "platisma" || r.id === "cervical")
+          base = edad < 50 ? 0.5 : edad < 60 ? 1.5 : 2.5;
+        if (r.id === "crow") base = Math.min(4, b + 0.5);
+        if ((r.id === "naso" || r.id === "marioneta") && smoke >= 2)
+          base = Math.min(4, base + 0.5);
+        const rv = Math.round(Math.max(0, base - 0.5));
+        const dv = Math.round(Math.min(4, base + 0.5));
+        setSelectValue(`merz_${r.id}_rest`, rv);
+        setSelectValue(`merz_${r.id}_dyn`, dv);
+      })
+    );
+  }
+
+  function handleSuggestNAU() {
+    const edad = getFormNumber("edad");
+    if (!edad) {
+      alert("Introduce la edad de la paciente primero, en la pestaña Clasificación.");
+      return;
+    }
+    const sexo = getFormValue("sexo");
+    const smoke = getFormNumber("tabaco");
+    const peso = getFormNumber("peso");
+    const talla = getFormNumber("talla");
+    const bmi = peso && talla ? peso / Math.pow(talla / 100, 2) : 23;
+
+    const b = edad < 35 ? 0 : edad < 45 ? 0.5 : edad < 55 ? 1 : edad < 65 ? 1.5 : 2;
+    const sexM = sexo === "Mujer" ? 0.3 : 0;
+    const bmiM = bmi < 20 ? 0.5 : bmi < 22 ? 0.2 : 0;
+    const smokeM = smoke >= 2 ? 0.3 : 0;
+    const cl = (v: number) => Number(Math.min(3, Math.max(0, v)).toFixed(1));
+
+    setInputValue("nau_fore", cl(b - 0.5 + bmiM));
+    setInputValue("nau_perio", cl(b + 0.5 + sexM + bmiM));
+    setInputValue("nau_malar", cl(b + sexM + bmiM));
+    setInputValue("nau_naso", cl(b + 0.5 + smokeM));
+    setInputValue("nau_ment", cl(b - 0.3));
+    setInputValue(
+      "nau_neck",
+      edad < 50 ? 0 : edad < 60 ? 0.5 : edad < 70 ? 1.5 : 2.5
+    );
+    const lax = Number(
+      Math.min(4, Math.max(0, edad < 40 ? 0 : edad < 55 ? 1 : edad < 65 ? 2 : 3)).toFixed(1)
+    );
+    setInputValue("nau_lax", lax);
+    const skin = Math.round(Math.max(10, 100 - (edad - 25) * 1.3 - smokeM * 10));
+    setInputValue("nau_skin", skin);
+  }
 
   async function handleGenerate() {
     setGenerating(true);
@@ -202,7 +301,7 @@ export default function ClinicalForm({
   const merz = d?.merz ?? {};
 
   return (
-    <form action={action}>
+    <form action={action} ref={formRef}>
       <div className="flex gap-1 mb-5 border-b border-rule overflow-x-auto">
         {TABS.map((t) => (
           <button
@@ -252,6 +351,23 @@ export default function ClinicalForm({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Edad">
+              <input
+                name="edad"
+                type="number"
+                min="0"
+                max="120"
+                defaultValue={d?.edad ?? ""}
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Sexo">
+              <select name="sexo" defaultValue={d?.sexo ?? ""} className={inputCls}>
+                <option value="">—</option>
+                <option value="Mujer">Mujer</option>
+                <option value="Hombre">Hombre</option>
+              </select>
+            </Field>
             <Field label="Motivo de consulta">
               <input
                 name="motivo"
@@ -348,10 +464,21 @@ export default function ClinicalForm({
 
         {/* ── Merz ── */}
         <div className={tab === "Merz" ? "space-y-5" : "hidden"}>
-          <p className="text-xs text-mid -mt-1">
-            0 (ausencia) a 4 (máxima severidad). Reposo y dinámica por
-            separado.
-          </p>
+          <div className="flex items-center justify-between -mt-1">
+            <p className="text-xs text-mid">
+              0 (ausencia) a 4 (máxima severidad). Reposo y dinámica por
+              separado.
+            </p>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={handleSuggestMerz}
+                className="text-xs bg-accent2 text-white rounded-full px-3 py-1 whitespace-nowrap"
+              >
+                ⚡ Sugerir por edad
+              </button>
+            )}
+          </div>
           {MERZ_GROUPS.map((group) => (
             <div key={group.label}>
               <p className={labelCls}>{group.label}</p>
@@ -379,7 +506,18 @@ export default function ClinicalForm({
         {/* ── NAU ── */}
         <div className={tab === "NAU" ? "space-y-5" : "hidden"}>
           <div>
-            <p className={labelCls}>NAU — déficit volumétrico</p>
+            <div className="flex items-center justify-between">
+              <p className={labelCls}>NAU — déficit volumétrico</p>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={handleSuggestNAU}
+                  className="text-xs bg-accent2 text-white rounded-full px-3 py-1 whitespace-nowrap -mt-2"
+                >
+                  ↺ Recalcular por edad
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <NauField name="nau_fore" label="Frente" value={d?.nau_fore} />
               <NauField

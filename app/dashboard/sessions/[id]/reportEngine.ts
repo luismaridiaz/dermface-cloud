@@ -57,6 +57,7 @@ export type LateralPhoto = {
 export type ReportContext = {
   patientName: string;
   age: number | null;
+  sexo?: string | null;
   sessionDate: string;
   clinical: ClinicalInput | null;
   frontal: FrontalPhoto | null;
@@ -270,7 +271,7 @@ export function buildReport(
   const cab =
     `INFORME CLÍNICO — DermFace Cloud\n` +
     `Fecha: ${fecha}\n` +
-    `Paciente: ${ctx.patientName}${ctx.age !== null ? `, ${ctx.age} años` : ""}\n` +
+    `Paciente: ${ctx.patientName}${ctx.age !== null ? `, ${ctx.age} años` : ""}${ctx.sexo ? `, ${ctx.sexo}` : ""}\n` +
     `Motivo: ${c.motivo || "—"} · Previos: ${c.previos || "—"}\n` +
     `──────────────────────────────\n\n`;
 

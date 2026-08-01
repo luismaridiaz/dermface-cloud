@@ -53,6 +53,8 @@ export async function saveClinicalData(sessionId: string, formData: FormData) {
   const { error } = await supabase.from("clinical_data").upsert(
     {
       session_id: sessionId,
+      edad: num("edad"),
+      sexo: str("sexo"),
       motivo: str("motivo"),
       previos: str("previos"),
       peso,
@@ -128,8 +130,8 @@ export async function generateReport(sessionId: string) {
     ) ?? null;
 
   const patient = (session as any)?.patients;
-  let age: number | null = null;
-  if (patient?.birth_date) {
+  let age: number | null = (clinical as any)?.edad ?? null;
+  if (age === null && patient?.birth_date) {
     const birth = new Date(patient.birth_date);
     const today = new Date();
     age = today.getFullYear() - birth.getFullYear();
@@ -140,6 +142,7 @@ export async function generateReport(sessionId: string) {
   const ctx = {
     patientName: patient?.full_name ?? "Paciente",
     age,
+    sexo: (clinical as any)?.sexo ?? null,
     sessionDate: session?.session_date ?? new Date().toISOString(),
     clinical: clinical as any,
     frontal: frontal as any,
