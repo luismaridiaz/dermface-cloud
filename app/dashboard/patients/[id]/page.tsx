@@ -5,14 +5,15 @@ import { createSession } from "./actions";
 export default async function PatientPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createClient();
 
   const { data: patient } = await supabase
     .from("patients")
     .select("id, full_name, birth_date")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!patient) {
@@ -22,10 +23,10 @@ export default async function PatientPage({
   const { data: sessions } = await supabase
     .from("sessions")
     .select("id, session_date, status")
-    .eq("patient_id", params.id)
+    .eq("patient_id", id)
     .order("session_date", { ascending: false });
 
-  const newSessionAction = createSession.bind(null, params.id);
+  const newSessionAction = createSession.bind(null, id);
 
   return (
     <div>

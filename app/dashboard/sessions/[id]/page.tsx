@@ -6,8 +6,9 @@ import ClinicalForm from "./ClinicalForm";
 export default async function SessionPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createClient();
   const {
     data: { user },
@@ -23,7 +24,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select("id, session_date, patient_id, patients(full_name)")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!session) {
@@ -33,11 +34,11 @@ export default async function SessionPage({
   const { data: clinical } = await supabase
     .from("clinical_data")
     .select("*")
-    .eq("session_id", params.id)
+    .eq("session_id", id)
     .maybeSingle();
 
   const canEdit = profile?.role === "doctor";
-  const action = saveClinicalData.bind(null, params.id);
+  const action = saveClinicalData.bind(null, id);
   const patientName = (session as any).patients?.full_name ?? "Paciente";
 
   return (
