@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { saveClinicalData } from "./actions";
 import ClinicalForm from "./ClinicalForm";
+import PhotoUploader from "./PhotoUploader";
 
 export default async function SessionPage({
   params,
@@ -40,6 +41,29 @@ export default async function SessionPage({
     .eq("session_id", id)
     .maybeSingle();
 
+  const { data: photoRows } = await supabase
+    .from("session_photos")
+    .select("id, storage_path, view_type, created_at")
+    .eq("session_id", id)
+    .order("created_at", { ascending: false });
+
+  const photos = await Promise.all(
+    (photoRows ?? []).map(async (p) => {
+      const { data: signed } = await supabase.storage
+        .from("session-photos")
+        .createSignedUrl(p.storage_path, 3600);
+      return { ...p, url: signed?.signedUrl ?? null };
+    })
+  );
+
+  const VIEW_LABELS: Record<string, string> = {
+    frontal: "Frontal",
+    lateral_izq: "Lateral izquierda",
+    lateral_der: "Lateral derecha",
+    oblicua_izq: "Oblicua izquierda",
+    oblicua_der: "Oblicua derecha",
+  };
+
   const canEdit = profile?.role === "doctor";
   const action = saveClinicalData.bind(null, id);
   const patientName = (session as any).patients?.full_name ?? "Paciente";
@@ -67,6 +91,27 @@ export default async function SessionPage({
       {saveError && (
         <div className="mb-5 text-sm bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3">
           Error al guardar: {saveError}
+        </div>
+      )}
+
+      <PhotoUploader patientId={session.patient_id} sessionId={id} />
+
+      {photos.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+          {photos.map((p) => (
+            <div key={p.id} className="bg-white border border-rule rounded-xl overflow-hidden">
+              {p.url && (
+                <img
+                  src={p.url}
+                  alt={VIEW_LABELS[p.view_type ?? ""] ?? "Foto"}
+                  className="w-full aspect-square object-cover"
+                />
+              )}
+              <p className="text-xs text-mid px-2 py-1.5">
+                {VIEW_LABELS[p.view_type ?? ""] ?? p.view_type}
+              </p>
+            </div>
+          ))}
         </div>
       )}
 
