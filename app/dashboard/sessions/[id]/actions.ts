@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 const MERZ_REGION_IDS = [
@@ -90,8 +90,10 @@ export async function saveClinicalData(sessionId: string, formData: FormData) {
 
   if (error) {
     console.error("Error guardando clinical_data:", error.message);
-    return;
+    redirect(
+      `/dashboard/sessions/${sessionId}?error=${encodeURIComponent(error.message)}`
+    );
   }
 
-  revalidatePath(`/dashboard/sessions/${sessionId}`);
+  redirect(`/dashboard/sessions/${sessionId}?saved=1`);
 }

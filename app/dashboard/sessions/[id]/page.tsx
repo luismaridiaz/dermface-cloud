@@ -5,10 +5,13 @@ import ClinicalForm from "./ClinicalForm";
 
 export default async function SessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { id } = await params;
+  const { saved, error: saveError } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -55,6 +58,17 @@ export default async function SessionPage({
         Sesión del{" "}
         {new Date(session.session_date).toLocaleDateString("es-ES")}
       </p>
+
+      {saved && (
+        <div className="mb-5 text-sm bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3">
+          ✓ Sesión guardada correctamente.
+        </div>
+      )}
+      {saveError && (
+        <div className="mb-5 text-sm bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3">
+          Error al guardar: {saveError}
+        </div>
+      )}
 
       <ClinicalForm action={action} initialData={clinical} readOnly={!canEdit} />
 
