@@ -179,9 +179,9 @@ export default function ClinicalForm({
   readOnly: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("Clasificación");
+  const d = initialData;
   const [glogau, setGlogau] = useState(d?.glogau ? String(d.glogau) : "");
   const [fitzpatrick, setFitzpatrick] = useState(d?.fitzpatrick ?? "");
-  const d = initialData;
   const merz = d?.merz ?? {};
 
   return (
