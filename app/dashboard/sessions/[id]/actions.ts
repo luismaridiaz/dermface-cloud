@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { buildReport } from "./reportEngine";
 
 const MERZ_REGION_IDS = [
   "frontales",
@@ -96,4 +97,57 @@ export async function saveClinicalData(sessionId: string, formData: FormData) {
   }
 
   redirect(`/dashboard/sessions/${sessionId}?saved=1`);
+}
+
+export async function generateReport(sessionId: string) {
+  const supabase = await createClient();
+
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("session_date, patients(full_name, birth_date)")
+    .eq("id", sessionId)
+    .single();
+
+  const { data: clinical } = await supabase
+    .from("clinical_data")
+    .select("*")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  const { data: photos } = await supabase
+    .from("session_photos")
+    .select(
+      "view_type, cervicomental_angle, interpupilar_angle, asymmetry_pct, brow_izq_angle, brow_der_angle, manual_nasofacial_angle, manual_nasolabial_angle, manual_mentolabial_angle"
+    )
+    .eq("session_id", sessionId);
+
+  const frontal = photos?.find((p) => p.view_type === "frontal") ?? null;
+  const lateral =
+    photos?.find(
+      (p) => p.view_type === "lateral_izq" || p.view_type === "lateral_der"
+    ) ?? null;
+
+  const patient = (session as any)?.patients;
+  let age: number | null = null;
+  if (patient?.birth_date) {
+    const birth = new Date(patient.birth_date);
+    const today = new Date();
+    age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  }
+
+  const ctx = {
+    patientName: patient?.full_name ?? "Paciente",
+    age,
+    sessionDate: session?.session_date ?? new Date().toISOString(),
+    clinical: clinical as any,
+    frontal: frontal as any,
+    lateral: lateral as any,
+  };
+
+  const informe = buildReport(ctx, "full");
+  const plan = buildReport(ctx, "plan");
+
+  return { informe, plan };
 }

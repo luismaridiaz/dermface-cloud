@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { generateReport } from "./actions";
 
 const MERZ_GROUPS = [
   {
@@ -173,13 +174,29 @@ export default function ClinicalForm({
   action,
   initialData,
   readOnly,
+  sessionId,
 }: {
   action: (formData: FormData) => void;
   initialData: ClinicalRow;
   readOnly: boolean;
+  sessionId: string;
 }) {
   const [tab, setTab] = useState<Tab>("Clasificación");
   const d = initialData;
+  const informeRef = useRef<HTMLTextAreaElement>(null);
+  const planRef = useRef<HTMLTextAreaElement>(null);
+  const [generating, setGenerating] = useState(false);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const { informe, plan } = await generateReport(sessionId);
+      if (informeRef.current) informeRef.current.value = informe;
+      if (planRef.current) planRef.current.value = plan;
+    } finally {
+      setGenerating(false);
+    }
+  }
   const [glogau, setGlogau] = useState(d?.glogau ? String(d.glogau) : "");
   const [fitzpatrick, setFitzpatrick] = useState(d?.fitzpatrick ?? "");
   const merz = d?.merz ?? {};
@@ -482,8 +499,23 @@ export default function ClinicalForm({
 
         {/* ── Informe ── */}
         <div className={tab === "Informe" ? "space-y-5" : "hidden"}>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating}
+              className="bg-accent text-white rounded-full px-5 py-2 text-sm font-semibold hover:opacity-90 transition disabled:opacity-60"
+            >
+              {generating ? "Generando…" : "Generar informe y plan automáticamente"}
+            </button>
+          )}
+          <p className="text-xs text-mid -mt-3">
+            A partir de Glogau, Merz, NAU, biofísicos y los ángulos medidos. Puedes editar el resultado antes de guardar.
+          </p>
+
           <Field label="Informe">
             <textarea
+              ref={informeRef}
               name="informe"
               rows={6}
               defaultValue={d?.informe ?? ""}
@@ -492,6 +524,7 @@ export default function ClinicalForm({
           </Field>
           <Field label="Plan de tratamiento">
             <textarea
+              ref={planRef}
               name="plan_tratamiento"
               rows={6}
               defaultValue={d?.plan_tratamiento ?? ""}
