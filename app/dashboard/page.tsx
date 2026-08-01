@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createPatient } from "./actions";
 
@@ -71,7 +72,11 @@ export default async function DashboardPage() {
           </div>
         )}
         {patients?.map((p) => (
-          <div key={p.id} className="p-4 flex items-center justify-between">
+          <Link
+            key={p.id}
+            href={`/dashboard/patients/${p.id}`}
+            className="p-4 flex items-center justify-between hover:bg-warm transition"
+          >
             <div>
               <div className="font-medium text-ink">{p.full_name}</div>
               <div className="text-xs text-mid">
@@ -81,7 +86,7 @@ export default async function DashboardPage() {
             <div className="text-xs text-mid">
               Alta: {new Date(p.created_at).toLocaleDateString("es-ES")}
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
