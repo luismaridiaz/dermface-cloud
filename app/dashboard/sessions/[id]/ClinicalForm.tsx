@@ -179,6 +179,8 @@ export default function ClinicalForm({
   readOnly: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("Clasificación");
+  const [glogau, setGlogau] = useState(d?.glogau ? String(d.glogau) : "");
+  const [fitzpatrick, setFitzpatrick] = useState(d?.fitzpatrick ?? "");
   const d = initialData;
   const merz = d?.merz ?? {};
 
@@ -249,40 +251,42 @@ export default function ClinicalForm({
             <p className={labelCls}>Glogau</p>
             <div className="flex gap-2 flex-wrap">
               {["1", "2", "3", "4"].map((v) => (
-                <label key={v} className="cursor-pointer">
-                  <input
-                    type="radio"
-                    name="glogau"
-                    value={v}
-                    defaultChecked={String(d?.glogau ?? "") === v}
-                    className="sr-only peer"
-                  />
-                  <span className="peer-checked:border-accent peer-checked:bg-accent/10 border border-rule rounded-lg px-3 py-2 text-sm block">
-                    Tipo {v}
-                  </span>
-                </label>
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setGlogau(v)}
+                  className={`border rounded-lg px-3 py-2 text-sm transition ${
+                    glogau === v
+                      ? "border-accent bg-accent/10 text-accent font-semibold"
+                      : "border-rule text-ink hover:border-accent/50"
+                  }`}
+                >
+                  Tipo {v}
+                </button>
               ))}
             </div>
+            <input type="hidden" name="glogau" value={glogau} />
           </div>
 
           <div>
             <p className={labelCls}>Fitzpatrick</p>
             <div className="flex gap-2 flex-wrap">
               {["I", "II", "III", "IV", "V", "VI"].map((v) => (
-                <label key={v} className="cursor-pointer">
-                  <input
-                    type="radio"
-                    name="fitzpatrick"
-                    value={v}
-                    defaultChecked={d?.fitzpatrick === v}
-                    className="sr-only peer"
-                  />
-                  <span className="peer-checked:border-accent peer-checked:bg-accent/10 border border-rule rounded-lg px-3 py-2 text-sm block">
-                    {v}
-                  </span>
-                </label>
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setFitzpatrick(v)}
+                  className={`border rounded-lg px-3 py-2 text-sm transition ${
+                    fitzpatrick === v
+                      ? "border-accent bg-accent/10 text-accent font-semibold"
+                      : "border-rule text-ink hover:border-accent/50"
+                  }`}
+                >
+                  {v}
+                </button>
               ))}
             </div>
+            <input type="hidden" name="fitzpatrick" value={fitzpatrick} />
           </div>
         </div>
 
