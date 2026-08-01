@@ -206,6 +206,34 @@ export default function ClinicalForm({
       <fieldset disabled={readOnly} className="space-y-6">
         {/* ── Clasificación ── */}
         <div className={tab === "Clasificación" ? "space-y-5" : "hidden"}>
+          <div className="bg-warm border border-rule rounded-xl p-4">
+            <p className={labelCls}>Consentimiento informado</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <Field label="Firma paciente">
+                <input
+                  name="consent_sig"
+                  defaultValue={d?.consent_sig ?? ""}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Profesional">
+                <input
+                  name="consent_prof"
+                  defaultValue={d?.consent_prof ?? ""}
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                name="consent_ok"
+                defaultChecked={!!d?.consent_ok}
+              />
+              Consentimiento firmado y archivado
+            </label>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Motivo de consulta">
               <input
@@ -271,17 +299,28 @@ export default function ClinicalForm({
           <div>
             <p className={labelCls}>Fitzpatrick</p>
             <div className="flex gap-2 flex-wrap">
-              {["I", "II", "III", "IV", "V", "VI"].map((v) => (
+              {[
+                { v: "I", color: "#f8d5c2" },
+                { v: "II", color: "#eec8a0" },
+                { v: "III", color: "#d1a17a" },
+                { v: "IV", color: "#a97452" },
+                { v: "V", color: "#6f4a35" },
+                { v: "VI", color: "#3b2219" },
+              ].map(({ v, color }) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => setFitzpatrick(v)}
-                  className={`border rounded-lg px-3 py-2 text-sm transition ${
+                  className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-sm transition ${
                     fitzpatrick === v
                       ? "border-accent bg-accent/10 text-accent font-semibold"
                       : "border-rule text-ink hover:border-accent/50"
                   }`}
                 >
+                  <span
+                    className="w-4 h-4 rounded-full border border-black/10 inline-block"
+                    style={{ backgroundColor: color }}
+                  />
                   {v}
                 </button>
               ))}
@@ -443,34 +482,6 @@ export default function ClinicalForm({
 
         {/* ── Informe ── */}
         <div className={tab === "Informe" ? "space-y-5" : "hidden"}>
-          <div className="bg-warm border border-rule rounded-xl p-4">
-            <p className={labelCls}>Consentimiento informado</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              <Field label="Firma paciente">
-                <input
-                  name="consent_sig"
-                  defaultValue={d?.consent_sig ?? ""}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Profesional">
-                <input
-                  name="consent_prof"
-                  defaultValue={d?.consent_prof ?? ""}
-                  className={inputCls}
-                />
-              </Field>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                type="checkbox"
-                name="consent_ok"
-                defaultChecked={!!d?.consent_ok}
-              />
-              Consentimiento firmado y archivado
-            </label>
-          </div>
-
           <Field label="Informe">
             <textarea
               name="informe"
