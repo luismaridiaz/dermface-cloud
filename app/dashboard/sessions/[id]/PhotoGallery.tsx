@@ -1,12 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Photo = {
   id: string;
   url: string | null;
   view_type: string | null;
+  storage_path: string;
   landmarks?: unknown;
   cervicomental_angle?: number | null;
 };
@@ -45,9 +47,16 @@ async function getFaceLandmarker() {
   return landmarkerPromise;
 }
 
-function PhotoCard({ photo }: { photo: Photo }) {
+function PhotoCard({
+  photo,
+  canDelete,
+}: {
+  photo: Photo;
+  canDelete: boolean;
+}) {
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const router = useRouter();
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
     photo.landmarks ? "done" : "idle"
   );
@@ -55,6 +64,25 @@ function PhotoCard({ photo }: { photo: Photo }) {
     photo.cervicomental_angle ?? null
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm("¿Borrar esta foto? No se puede deshacer.")) return;
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      await supabase.storage.from("session-photos").remove([photo.storage_path]);
+      const { error } = await supabase
+        .from("session_photos")
+        .delete()
+        .eq("id", photo.id);
+      if (error) throw error;
+      router.refresh();
+    } catch (e: any) {
+      setErrorMsg(e.message ?? "Error al borrar.");
+      setDeleting(false);
+    }
+  }
 
   function drawLandmarks(landmarks: { x: number; y: number }[]) {
     const img = imgRef.current;
@@ -169,17 +197,33 @@ function PhotoCard({ photo }: { photo: Photo }) {
           <p className="text-xs text-ink mt-1">Cervicomental: {angle}°</p>
         )}
         {errorMsg && <p className="text-xs text-red-700 mt-1">{errorMsg}</p>}
+        {canDelete && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="mt-1 ml-2 text-xs text-red-700 underline disabled:opacity-60"
+          >
+            {deleting ? "Borrando…" : "Borrar"}
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-export default function PhotoGallery({ photos }: { photos: Photo[] }) {
+export default function PhotoGallery({
+  photos,
+  canDelete,
+}: {
+  photos: Photo[];
+  canDelete: boolean;
+}) {
   if (photos.length === 0) return null;
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
       {photos.map((p) => (
-        <PhotoCard key={p.id} photo={p} />
+        <PhotoCard key={p.id} photo={p} canDelete={canDelete} />
       ))}
     </div>
   );

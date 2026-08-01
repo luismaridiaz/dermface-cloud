@@ -91,7 +91,7 @@ export default async function SessionPage({
 
       <PhotoUploader patientId={session.patient_id} sessionId={id} />
 
-      <PhotoGallery photos={photos} />
+      <PhotoGallery photos={photos} canDelete={canEdit} />
 
       <ClinicalForm action={action} initialData={clinical} readOnly={!canEdit} />
 
