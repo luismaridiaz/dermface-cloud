@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { saveClinicalData } from "./actions";
 import ClinicalForm from "./ClinicalForm";
 import PhotoUploader from "./PhotoUploader";
+import PhotoGallery from "./PhotoGallery";
 
 export default async function SessionPage({
   params,
@@ -43,7 +44,9 @@ export default async function SessionPage({
 
   const { data: photoRows } = await supabase
     .from("session_photos")
-    .select("id, storage_path, view_type, created_at")
+    .select(
+      "id, storage_path, view_type, created_at, landmarks, cervicomental_angle"
+    )
     .eq("session_id", id)
     .order("created_at", { ascending: false });
 
@@ -55,14 +58,6 @@ export default async function SessionPage({
       return { ...p, url: signed?.signedUrl ?? null };
     })
   );
-
-  const VIEW_LABELS: Record<string, string> = {
-    frontal: "Frontal",
-    lateral_izq: "Lateral izquierda",
-    lateral_der: "Lateral derecha",
-    oblicua_izq: "Oblicua izquierda",
-    oblicua_der: "Oblicua derecha",
-  };
 
   const canEdit = profile?.role === "doctor";
   const action = saveClinicalData.bind(null, id);
@@ -96,24 +91,7 @@ export default async function SessionPage({
 
       <PhotoUploader patientId={session.patient_id} sessionId={id} />
 
-      {photos.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-          {photos.map((p) => (
-            <div key={p.id} className="bg-white border border-rule rounded-xl overflow-hidden">
-              {p.url && (
-                <img
-                  src={p.url}
-                  alt={VIEW_LABELS[p.view_type ?? ""] ?? "Foto"}
-                  className="w-full aspect-square object-cover"
-                />
-              )}
-              <p className="text-xs text-mid px-2 py-1.5">
-                {VIEW_LABELS[p.view_type ?? ""] ?? p.view_type}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+      <PhotoGallery photos={photos} />
 
       <ClinicalForm action={action} initialData={clinical} readOnly={!canEdit} />
 
