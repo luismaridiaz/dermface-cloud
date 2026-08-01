@@ -11,7 +11,15 @@ type Photo = {
   storage_path: string;
   landmarks?: unknown;
   cervicomental_angle?: number | null;
+  interpupilar_angle?: number | null;
+  asymmetry_pct?: number | null;
+  brow_izq_angle?: number | null;
+  brow_der_angle?: number | null;
 };
+
+// Índices de los contornos oficiales de ceja (topología MediaPipe de 468 puntos)
+const LEFT_BROW = [276, 283, 282, 295, 285, 293, 334, 296, 336];
+const RIGHT_BROW = [46, 53, 52, 65, 55, 63, 105, 66, 107];
 
 const VIEW_LABELS: Record<string, string> = {
   frontal: "Frontal",
@@ -62,6 +70,18 @@ function PhotoCard({
   );
   const [angle, setAngle] = useState<number | null>(
     photo.cervicomental_angle ?? null
+  );
+  const [interpupilar, setInterpupilar] = useState<number | null>(
+    photo.interpupilar_angle ?? null
+  );
+  const [asymmetry, setAsymmetry] = useState<number | null>(
+    photo.asymmetry_pct ?? null
+  );
+  const [browIzq, setBrowIzq] = useState<number | null>(
+    photo.brow_izq_angle ?? null
+  );
+  const [browDer, setBrowDer] = useState<number | null>(
+    photo.brow_der_angle ?? null
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -128,30 +148,71 @@ function PhotoCard({
         return;
       }
 
-      // Ángulo cervicomental: eje nariz(1)-mentón(152) frente a la horizontal,
-      // en píxeles reales de la foto — igual cálculo que en DermFace HTML.
-      const nose = {
-        x: lm[1].x * img.naturalWidth,
-        y: lm[1].y * img.naturalHeight,
-      };
-      const chin = {
-        x: lm[152].x * img.naturalWidth,
-        y: lm[152].y * img.naturalHeight,
-      };
-      const dx = chin.x - nose.x;
-      const dy = chin.y - nose.y;
+      // Todos los ángulos siguientes se calculan igual que en DermFace HTML,
+      // en píxeles reales de la foto (no en fracciones normalizadas).
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+      const pt = (i: number) => ({ x: lm[i].x * W, y: lm[i].y * H });
+
+      const nose = pt(1);
+      const chin = pt(152);
+      const lEye = pt(33);
+      const rEye = pt(263);
+      const lJaw = pt(172);
+      const rJaw = pt(397);
+      const midX = (lEye.x + rEye.x) / 2;
+
+      // Cervicomental: eje nariz-mentón frente a la horizontal
+      const cervDx = chin.x - nose.x;
+      const cervDy = chin.y - nose.y;
       const cerv = Number(
-        ((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI).toFixed(1)
+        ((Math.atan2(Math.abs(cervDy), Math.abs(cervDx)) * 180) / Math.PI).toFixed(1)
       );
+
+      // Asimetría: diferencia horizontal entre hemicaras
+      const asimPct = Number(
+        ((Math.abs(lJaw.x - midX - (midX - rJaw.x)) / W) * 100).toFixed(1)
+      );
+
+      // Interpupilar: inclinación de la línea entre ojos
+      const eyeDx = rEye.x - lEye.x;
+      const eyeDy = rEye.y - lEye.y;
+      const interpDeg = Number(
+        ((Math.atan2(Math.abs(eyeDy), Math.abs(eyeDx)) * 180) / Math.PI).toFixed(1)
+      );
+
+      // Inclinación de cejas: extremo a extremo del contorno oficial
+      function browTilt(idxArr: number[]) {
+        const p0 = pt(idxArr[0]);
+        const p1 = pt(idxArr[idxArr.length - 1]);
+        return (Math.atan2(-(p1.y - p0.y), Math.abs(p1.x - p0.x)) * 180) / Math.PI;
+      }
+      const browA = browTilt(LEFT_BROW);
+      const browB = browTilt(RIGHT_BROW);
+      const lBrowX = pt(LEFT_BROW[0]).x;
+      const rBrowX = pt(RIGHT_BROW[0]).x;
+      const bIzq = Number((lBrowX < rBrowX ? browA : browB).toFixed(1));
+      const bDer = Number((lBrowX < rBrowX ? browB : browA).toFixed(1));
 
       drawLandmarks(lm);
       setAngle(cerv);
+      setInterpupilar(interpDeg);
+      setAsymmetry(asimPct);
+      setBrowIzq(bIzq);
+      setBrowDer(bDer);
       setStatus("done");
 
       const supabase = createClient();
       const { error } = await supabase
         .from("session_photos")
-        .update({ landmarks: lm, cervicomental_angle: cerv })
+        .update({
+          landmarks: lm,
+          cervicomental_angle: cerv,
+          interpupilar_angle: interpDeg,
+          asymmetry_pct: asimPct,
+          brow_izq_angle: bIzq,
+          brow_der_angle: bDer,
+        })
         .eq("id", photo.id);
       if (error) throw error;
     } catch (e: any) {
@@ -194,7 +255,14 @@ function PhotoCard({
             : "Detectar (MediaPipe)"}
         </button>
         {angle !== null && (
-          <p className="text-xs text-ink mt-1">Cervicomental: {angle}°</p>
+          <div className="text-xs text-ink mt-1 space-y-0.5">
+            <p>Cervicomental: {angle}° <span className="text-mid">(normal 80–95°)</span></p>
+            {interpupilar !== null && <p>Interpupilar: {interpupilar}° <span className="text-mid">(ideal 0°)</span></p>}
+            {asymmetry !== null && <p>Asimetría: {asymmetry}%</p>}
+            {browIzq !== null && browDer !== null && (
+              <p>Cejas: izq. {browIzq}° / dcha. {browDer}° <span className="text-mid">(normal 10–20°)</span></p>
+            )}
+          </div>
         )}
         {errorMsg && <p className="text-xs text-red-700 mt-1">{errorMsg}</p>}
         {canDelete && (
