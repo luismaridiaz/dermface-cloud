@@ -5,11 +5,41 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const VIEW_TYPES = [
-  { value: "frontal", label: "Frontal" },
-  { value: "lateral_izq", label: "Lateral izquierda" },
-  { value: "lateral_der", label: "Lateral derecha" },
-  { value: "oblicua_izq", label: "Oblicua izquierda" },
-  { value: "oblicua_der", label: "Oblicua derecha" },
+  {
+    value: "frontal",
+    label: "Frontal",
+    tips:
+      "💡 Iluminación: luz frontal difusa y homogénea, sin sombras duras. Evita contraluz, ventana detrás del paciente o flash lateral directo. Si ves sombra bajo las cejas o en el surco nasogeniano, mueve la fuente de luz.\n" +
+      "😐 Expresión neutra: ojos abiertos sin forzar, labios relajados (sin sonreír ni apretar), cejas en reposo. Pide: «mira al objetivo y relaja completamente la cara» y comprueba que no aprieta los dientes.\n" +
+      "📐 Plano de Frankfurt horizontal: línea imaginaria entre el borde inferior de la órbita (bajo el ojo) y el trago (la pieza de cartílago justo delante del oído), paralela al suelo. Si el mentón está elevado, el plano sube; si está bajado, el plano baja — corrígelo antes de disparar.\n" +
+      "🖼️ Encuadre: rostro completo desde arriba de la cabeza hasta la base del cuello, ocupando 70-80% del encuadre vertical. Fondo liso y neutro, sin texturas ni objetos detrás.",
+  },
+  {
+    value: "lateral_izq",
+    label: "Lateral izquierda",
+    tips:
+      "Perfil puro (90°) del lado izquierdo, oreja completa visible.\n" +
+      "📐 Plano de Frankfurt: igual que en la frontal — borde orbital inferior y trago alineados con el suelo. En perfil el trago se ve con claridad. Pide que mire recto al frente, ni arriba ni abajo.\n" +
+      "🖼️ Encuadre: perfil completo desde la frente hasta el mentón y hasta el cuello. Deja espacio delante de la nariz (importante para medir el ángulo nasofacial) y detrás del cráneo.",
+  },
+  {
+    value: "lateral_der",
+    label: "Lateral derecha",
+    tips:
+      "Perfil puro (90°) del lado derecho, oreja completa visible.\n" +
+      "📐 Plano de Frankfurt: igual que en la frontal — borde orbital inferior y trago alineados con el suelo. En perfil el trago se ve con claridad. Pide que mire recto al frente, ni arriba ni abajo.\n" +
+      "🖼️ Encuadre: perfil completo desde la frente hasta el mentón y hasta el cuello. Deja espacio delante de la nariz (importante para medir el ángulo nasofacial) y detrás del cráneo.",
+  },
+  {
+    value: "oblicua_izq",
+    label: "Oblicua izquierda",
+    tips: "A 45° hacia el lado izquierdo, entre la frontal y la lateral. Misma luz e iluminación que la frontal. Útil para valorar pómulo y surco nasogeniano.",
+  },
+  {
+    value: "oblicua_der",
+    label: "Oblicua derecha",
+    tips: "A 45° hacia el lado derecho, entre la frontal y la lateral. Misma luz e iluminación que la frontal. Útil para valorar pómulo y surco nasogeniano.",
+  },
 ];
 
 export default function PhotoUploader({
@@ -97,6 +127,9 @@ export default function PhotoUploader({
           />
         </label>
       </div>
+      <p className="text-xs text-mid mt-2 whitespace-pre-line">
+        {VIEW_TYPES.find((v) => v.value === viewType)?.tips}
+      </p>
       {error && <p className="text-sm text-red-700 mt-2">{error}</p>}
     </div>
   );

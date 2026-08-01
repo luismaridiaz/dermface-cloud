@@ -50,27 +50,30 @@ const MANUAL_ANGLE_TYPES: {
     value: "nasofacial",
     label: "Nasofacial",
     column: "manual_nasofacial_angle",
-    hint: "Clic 1: glabela → Clic 2: punta nasal",
+    hint: "Clic 1: glabela — el punto más prominente entre las cejas, en la línea media de la frente, justo encima de la raíz nasal. Clic 2: punta nasal — el punto más proyectado hacia delante de la nariz.",
   },
   {
     value: "nasolabial",
     label: "Nasolabial",
     column: "manual_nasolabial_angle",
-    hint: "Clic 1: base columela → Clic 2: borde bermellón superior",
+    hint: "Clic 1: base de la columela — el punto donde la columela (la tira de piel entre las fosas nasales) se une al labio superior. Clic 2: borde del bermellón superior — el borde donde termina la piel y empieza la parte roja/mucosa del labio superior.",
   },
   {
     value: "mentolabial",
     label: "Mentolabial",
     column: "manual_mentolabial_angle",
-    hint: "Clic 1: labio inferior → Clic 2: punto más anterior del mentón",
+    hint: "Clic 1: punto más profundo del labio inferior (el surco entre el labio inferior y el mentón, en su parte más hundida). Clic 2: pogonion — el punto más anterior (más hacia delante) del mentón.",
   },
   {
     value: "cervicomental",
     label: "Cervicomental",
     column: "cervicomental_angle",
-    hint: "Clic 1: punto submentoniano → Clic 2: punto cervical anterior",
+    hint: "Clic 1: punto submentoniano — justo debajo del mentón, donde empieza a curvarse hacia el cuello. Clic 2: punto cervical anterior — el punto más hundido de la unión entre la papada/cuello y la garganta.",
   },
 ];
+
+const MANUAL_LIMITATION_NOTE =
+  "⚠ Limitación: estos 2 clics calculan el ángulo agudo entre la línea trazada y la horizontal, no el ángulo anatómico clásico de la literatura (que a veces necesita 3 puntos). Úsalo como guía comparativa entre sesiones, no como medida cefalométrica de precisión.";
 
 // Se carga una sola vez y se reutiliza para todas las fotos de la página.
 let landmarkerPromise: Promise<any> | null = null;
@@ -414,7 +417,8 @@ function PhotoCard({
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-mid mt-1">{currentType.hint}</p>
+            <p className="text-[10px] text-mid mt-1 whitespace-pre-line">{currentType.hint}</p>
+            <p className="text-[10px] text-amber-700 mt-1">{MANUAL_LIMITATION_NOTE}</p>
             <div className="flex items-center justify-between mt-1">
               <button
                 type="button"
