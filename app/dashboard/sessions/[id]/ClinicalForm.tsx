@@ -414,6 +414,10 @@ export default function ClinicalForm({
 
           <div>
             <p className={labelCls}>Glogau</p>
+            <p className="text-[11px] text-mid mb-2">
+              Fotoenvejecimiento según arrugas, discromías y queratosis. Explora con luz tangencial y palpa mejillas (queratosis palpables = Tipo II).<br />
+              <strong>I</strong> Sin arrugas en reposo, sin queratosis (25-35a). <strong>II</strong> Arrugas en movimiento, queratosis palpables (35-50a). <strong>III</strong> Arrugas en reposo, discromías evidentes (50-65a). <strong>IV</strong> Arrugas en toda la superficie, laxitud grave, queratosis actínicas múltiples.
+            </p>
             <div className="flex gap-2 flex-wrap">
               {["1", "2", "3", "4"].map((v) => (
                 <button
@@ -435,6 +439,10 @@ export default function ClinicalForm({
 
           <div>
             <p className={labelCls}>Fitzpatrick</p>
+            <p className="text-[11px] text-mid mb-2">
+              Respuesta constitucional a UV — clave para láseres, peelings e hiperpigmentación. Pregunta: a) ¿se quema fácilmente? b) ¿se broncea? c) color de la cara interna del brazo.<br />
+              <strong>IV-VI</strong>: precaución máxima con energías ablativas — despigmentación tópica 8 semanas previa obligatoria.
+            </p>
             <div className="flex gap-2 flex-wrap">
               {[
                 { v: "I", color: "#f8d5c2" },
@@ -576,6 +584,9 @@ export default function ClinicalForm({
 
           <div>
             <p className={labelCls}>Biofísicos manuales</p>
+            <p className="text-[11px] text-mid mb-2">
+              Estimación clínica manual (sin aparato). Si algún día tienes un Corneómetro/Cutómetro/Tewámetro/Mexámetro/Sebúmetro real, usa sus valores como referencia con las escalas de abajo.
+            </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Field label="Hidratación (0–4)">
                 <input
@@ -586,6 +597,9 @@ export default function ClinicalForm({
                   defaultValue={d?.hidra ?? ""}
                   className={inputCls}
                 />
+                <p className="text-[10px] text-mid mt-1">
+                  Snap test: pellizca y suelta la piel, mide el tiempo en volver. 0 óptima · 1 leve reducción · 2 moderada · 3 reducida · 4 severa. (Ref. Corneómetro: &gt;70 hidratada, 45-69 normal, 30-44 seca, &lt;30 muy seca.)
+                </p>
               </Field>
               <Field label="Elasticidad (s)">
                 <input
@@ -595,6 +609,9 @@ export default function ClinicalForm({
                   defaultValue={d?.elastic ?? ""}
                   className={inputCls}
                 />
+                <p className="text-[10px] text-mid mt-1">
+                  Pinch test: pellizca 5s y cronometra cuánto tarda en volver a su sitio. &lt;1s excelente · 1-2s buena · 2-3s moderada · &gt;3s reducida (laxitud severa).
+                </p>
               </Field>
               <Field label="Pigmentación (0–4)">
                 <input
@@ -605,6 +622,9 @@ export default function ClinicalForm({
                   defaultValue={d?.pigment ?? ""}
                   className={inputCls}
                 />
+                <p className="text-[10px] text-mid mt-1">
+                  Manchas/discromías a simple vista. 0 ninguna · 1-2 leve-moderada · 3-4 marcada/generalizada. (Ref. Mexámetro melanina: &lt;200 Fototipo I-II, 200-350 III-IV, &gt;350 hiperpigmentación.)
+                </p>
               </Field>
               <Field label="Sebo (0–4)">
                 <input
@@ -615,6 +635,9 @@ export default function ClinicalForm({
                   defaultValue={d?.sebo ?? ""}
                   className={inputCls}
                 />
+                <p className="text-[10px] text-mid mt-1">
+                  Brillo/grasa visible en zona T tras 2-3h sin lavar. 0 asébacea/seca · 1-2 normal · 3 tendencia grasa · 4 hipersecreción evidente.
+                </p>
               </Field>
               <Field label="Eritema (0–4)">
                 <input
@@ -625,6 +648,9 @@ export default function ClinicalForm({
                   defaultValue={d?.eritema ?? ""}
                   className={inputCls}
                 />
+                <p className="text-[10px] text-mid mt-1">
+                  Rojez visible en reposo (no confundir con rubor pasajero). 0 sin eritema · 1-2 leve-moderado · 3-4 intenso/rosácea. (Ref. Mexámetro eritema: &lt;150 sin eritema, 150-300 leve-mod., &gt;300 intenso.)
+                </p>
               </Field>
               <Field label="TEWL">
                 <input
@@ -634,6 +660,9 @@ export default function ClinicalForm({
                   defaultValue={d?.tewl ?? ""}
                   className={inputCls}
                 />
+                <p className="text-[10px] text-mid mt-1">
+                  Pérdida transepidérmica de agua — sin aparato, déjalo vacío o estima por sensación de tirantez/descamación. (Ref. Tewámetro g/h/m²: 0-10 óptima, 10-15 normal, 15-25 ligera alteración, 25-35 moderada, &gt;35 barrera dañada.)
+                </p>
               </Field>
             </div>
           </div>
