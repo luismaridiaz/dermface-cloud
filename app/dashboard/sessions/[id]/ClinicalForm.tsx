@@ -79,6 +79,10 @@ type ClinicalRow = {
   consent_ok: boolean | null;
   informe: string | null;
   plan_tratamiento: string | null;
+  presupuesto: string | null;
+  downtime: string | null;
+  embarazo: string | null;
+  anticoagulantes: string | null;
 } | null;
 
 const inputCls =
@@ -637,6 +641,46 @@ export default function ClinicalForm({
 
         {/* ── Informe ── */}
         <div className={tab === "Informe" ? "space-y-5" : "hidden"}>
+          <div className="bg-warm border border-rule rounded-xl p-4">
+            <p className={labelCls}>Preferencias para el plan de tratamiento</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Presupuesto">
+                <select name="presupuesto" defaultValue={d?.presupuesto ?? ""} className={inputCls}>
+                  <option value="">—</option>
+                  <option value="< 500€">&lt; 500€</option>
+                  <option value="500-1.000€">500-1.000€</option>
+                  <option value="1.000-3.000€">1.000-3.000€</option>
+                  <option value="3.000-5.000€">3.000-5.000€</option>
+                  <option value="> 5.000€">&gt; 5.000€</option>
+                  <option value="Sin límite">Sin límite</option>
+                </select>
+              </Field>
+              <Field label="Downtime aceptado">
+                <select name="downtime" defaultValue={d?.downtime ?? ""} className={inputCls}>
+                  <option value="">—</option>
+                  <option value="Sin downtime">Sin downtime</option>
+                  <option value="1-3 días">1-3 días</option>
+                  <option value="Hasta 1 semana">Hasta 1 semana</option>
+                  <option value="Sin restricción">Sin restricción</option>
+                </select>
+              </Field>
+              <Field label="Embarazo/lactancia">
+                <select name="embarazo" defaultValue={d?.embarazo ?? ""} className={inputCls}>
+                  <option value="">—</option>
+                  <option value="No">No</option>
+                  <option value="Sí">Sí</option>
+                </select>
+              </Field>
+              <Field label="Anticoagulantes">
+                <select name="anticoagulantes" defaultValue={d?.anticoagulantes ?? ""} className={inputCls}>
+                  <option value="">—</option>
+                  <option value="No">No</option>
+                  <option value="Sí">Sí</option>
+                </select>
+              </Field>
+            </div>
+          </div>
+
           {!readOnly && (
             <button
               type="button"
@@ -648,7 +692,7 @@ export default function ClinicalForm({
             </button>
           )}
           <p className="text-xs text-mid -mt-3">
-            A partir de Glogau, Merz, NAU, biofísicos y los ángulos medidos. Puedes editar el resultado antes de guardar.
+            A partir de Glogau, Merz, NAU, biofísicos, los ángulos medidos y las preferencias de arriba. Puedes editar el resultado antes de guardar.
           </p>
 
           <Field label="Informe">

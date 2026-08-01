@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { buildReport } from "./reportEngine";
+import { buildDetailedPlan } from "./planEngine";
 
 const MERZ_REGION_IDS = [
   "frontales",
@@ -86,6 +87,10 @@ export async function saveClinicalData(sessionId: string, formData: FormData) {
       consent_ok: formData.get("consent_ok") === "on",
       informe: str("informe"),
       plan_tratamiento: str("plan_tratamiento"),
+      presupuesto: str("presupuesto"),
+      downtime: str("downtime"),
+      embarazo: str("embarazo"),
+      anticoagulantes: str("anticoagulantes"),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "session_id" }
@@ -150,7 +155,7 @@ export async function generateReport(sessionId: string) {
   };
 
   const informe = buildReport(ctx, "full");
-  const plan = buildReport(ctx, "plan");
+  const plan = buildDetailedPlan(ctx);
 
   return { informe, plan };
 }
