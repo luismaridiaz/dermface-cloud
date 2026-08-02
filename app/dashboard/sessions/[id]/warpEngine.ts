@@ -10,7 +10,44 @@ export const MESH_CONTOURS = {
   rightBrow: [46, 53, 52, 65, 55, 63, 105, 66, 107],
 };
 
-type Pt = { x: number; y: number };
+export type Pt = { x: number; y: number };
+
+// Cargador compartido del modelo MediaPipe — una sola instancia para toda la
+// app (PhotoGallery y BeforeAfterComparator la reutilizan), así no se
+// descarga el modelo (~5MB) más de una vez por sesión de navegador.
+let landmarkerPromise: Promise<any> | null = null;
+
+export async function getFaceLandmarker() {
+  if (!landmarkerPromise) {
+    landmarkerPromise = (async () => {
+      const { FaceLandmarker, FilesetResolver } = await import(
+        "@mediapipe/tasks-vision"
+      );
+      const fileset = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+      );
+      return FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU",
+        },
+        runningMode: "IMAGE",
+        numFaces: 1,
+      });
+    })();
+  }
+  return landmarkerPromise;
+}
+
+export async function detectLandmarksFrac(img: HTMLImageElement): Promise<Pt[] | null> {
+  const landmarker = await getFaceLandmarker();
+  const result = landmarker.detect(img);
+  const lm = result.faceLandmarks?.[0];
+  if (!lm) return null;
+  return lm.map((p: Pt) => ({ x: p.x, y: p.y }));
+}
+
 type Mat = [number, number, number, number, number, number];
 
 function matFromTri(p0: Pt, p1: Pt, p2: Pt): Mat {

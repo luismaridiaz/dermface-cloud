@@ -1,28 +1,47 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { renderTriangleWarp, detectLandmarksFrac, type Pt } from "./warpEngine";
 
 export default function BeforeAfterComparator() {
   const beforeImgRef = useRef<HTMLImageElement>(new Image());
   const afterImgRef = useRef<HTMLImageElement>(new Image());
   const beforePreviewRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const warpTmpRef = useRef<HTMLCanvasElement>(
+    typeof document !== "undefined" ? document.createElement("canvas") : (null as any)
+  );
 
   const [beforeReady, setBeforeReady] = useState(false);
   const [afterReady, setAfterReady] = useState(false);
   const [pct, setPct] = useState(50);
 
+  const [beforeLm, setBeforeLm] = useState<Pt[] | null>(null);
+  const [afterLm, setAfterLm] = useState<Pt[] | null>(null);
+  const [aligning, setAligning] = useState(false);
+
   function loadFile(file: File | null, which: "before" | "after") {
     if (!file) return;
+    if (which === "before") setBeforeLm(null);
+    else setAfterLm(null);
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = which === "before" ? beforeImgRef.current : afterImgRef.current;
-      img.onload = () => {
+      img.onload = async () => {
         if (which === "before") {
           setBeforeReady(true);
           drawBeforePreview();
         } else {
           setAfterReady(true);
+        }
+        setAligning(true);
+        try {
+          const lm = await detectLandmarksFrac(img);
+          if (which === "before") setBeforeLm(lm);
+          else setAfterLm(lm);
+        } finally {
+          setAligning(false);
         }
       };
       img.src = ev.target?.result as string;
@@ -55,15 +74,45 @@ export default function BeforeAfterComparator() {
     ctx.clearRect(0, 0, targetW, targetH);
     ctx.globalAlpha = 1 - p;
     ctx.drawImage(before, 0, 0, targetW, targetH);
-    ctx.globalAlpha = p;
-    ctx.drawImage(after, 0, 0, targetW, targetH);
+
+    if (beforeLm && afterLm && warpTmpRef.current) {
+      // Alineación: se deforma la foto "después" para que su malla de 468
+      // puntos coincida con la geometría de la foto "antes", antes de
+      // mezclar — así no se nota el salto de encuadre/pose entre las dos.
+      const afterNative = afterLm.map((pt) => ({
+        x: pt.x * after.naturalWidth,
+        y: pt.y * after.naturalHeight,
+      }));
+      const beforeToAfterNative = beforeLm.map((pt) => ({
+        x: pt.x * after.naturalWidth,
+        y: pt.y * after.naturalHeight,
+      }));
+      renderTriangleWarp(warpTmpRef.current, after, afterNative, beforeToAfterNative);
+      ctx.globalAlpha = p;
+      ctx.drawImage(
+        warpTmpRef.current,
+        0,
+        0,
+        warpTmpRef.current.width,
+        warpTmpRef.current.height,
+        0,
+        0,
+        targetW,
+        targetH
+      );
+    } else {
+      ctx.globalAlpha = p;
+      ctx.drawImage(after, 0, 0, targetW, targetH);
+    }
     ctx.globalAlpha = 1;
   }
 
   useEffect(() => {
     draw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [beforeReady, afterReady, pct]);
+  }, [beforeReady, afterReady, pct, beforeLm, afterLm]);
+
+  const aligned = !!(beforeLm && afterLm);
 
   return (
     <div className="bg-white border border-rule rounded-2xl p-5 mb-6">
@@ -71,7 +120,7 @@ export default function BeforeAfterComparator() {
         🔀 Comparador antes / después
       </p>
       <p className="text-xs text-mid mb-3">
-        Mezcla por opacidad entre dos fotos (p. ej. dos sesiones distintas de la misma paciente). El slider no divide la imagen, mezcla ambas por transparencia global — no es una medición, solo apoyo visual.
+        Mezcla por opacidad entre dos fotos (p. ej. dos sesiones distintas de la misma paciente). Si detecta cara en ambas, alinea la geometría con la malla de 468 puntos antes de mezclar — mejora propia de esta versión cloud, el HTML original no lo hacía. No es una medición, solo apoyo visual.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -94,6 +143,18 @@ export default function BeforeAfterComparator() {
           />
         </label>
       </div>
+
+      {(beforeReady || afterReady) && (
+        <p className="text-xs mb-3">
+          {aligning
+            ? "Detectando cara para alinear…"
+            : aligned
+            ? "✓ Alineado por malla facial"
+            : beforeReady && afterReady
+            ? "⚠ No se detectó cara en una o ambas fotos — mezcla sin alinear."
+            : ""}
+        </p>
+      )}
 
       <div className="flex gap-4 flex-wrap mb-3">
         <div>

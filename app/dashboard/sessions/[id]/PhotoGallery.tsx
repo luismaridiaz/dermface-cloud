@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { renderTriangleWarp, computeWarpDst, applyNeckTreatment } from "./warpEngine";
+import { renderTriangleWarp, computeWarpDst, applyNeckTreatment, getFaceLandmarker } from "./warpEngine";
 
 type Photo = {
   id: string;
@@ -93,31 +93,6 @@ type IndexMode =
 
 type Pt = { x: number; y: number };
 
-// Se carga una sola vez y se reutiliza para todas las fotos de la página.
-let landmarkerPromise: Promise<any> | null = null;
-
-async function getFaceLandmarker() {
-  if (!landmarkerPromise) {
-    landmarkerPromise = (async () => {
-      const { FaceLandmarker, FilesetResolver } = await import(
-        "@mediapipe/tasks-vision"
-      );
-      const fileset = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-      );
-      return FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-          delegate: "GPU",
-        },
-        runningMode: "IMAGE",
-        numFaces: 1,
-      });
-    })();
-  }
-  return landmarkerPromise;
-}
 
 // ── GLCM (rugosidad) — puerto fiel de computeGLCMFeatures() del HTML original ──
 function computeGLCMFeatures(imageData: ImageData, levels = 16, distance = 1) {
@@ -368,7 +343,7 @@ function PhotoCard({
 
   async function handleApplyWarp() {
     setWarpError(null);
-    const lm = photo.landmarks as { x: number; y: number }[] | undefined;
+    const lm = landmarksRef.current;
     if (!lm) {
       setWarpError("Detecta primero con MediaPipe (arriba) — sin los 468 puntos no hay malla que deformar.");
       return;
