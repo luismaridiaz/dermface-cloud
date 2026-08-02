@@ -384,6 +384,41 @@ export default function ClinicalForm({
   }
 
   const [glogau, setGlogau] = useState(d?.glogau ? String(d.glogau) : "");
+  const [mpaCorne, setMpaCorne] = useState(62);
+  const [mpaCuto, setMpaCuto] = useState(0.68);
+  const [mpaTewl, setMpaTewl] = useState(18);
+  const [mpaMel, setMpaMel] = useState(220);
+  const [mpaEry, setMpaEry] = useState(185);
+  const [mpaSebo, setMpaSebo] = useState(80);
+
+  function mpaCorneInterp(v: number) {
+    return v < 30 ? "Muy seca" : v < 45 ? "Seca" : v < 70 ? "Normohumectada" : v < 91 ? "Hidratada" : "Muy hidratada";
+  }
+  function mpaCutoInterp(v: number) {
+    return v < 0.5 ? "Laxitud severa" : v < 0.65 ? "Reducida" : v < 0.8 ? "Normal" : "Óptima";
+  }
+  function mpaTewlInterp(v: number) {
+    return v <= 10 ? "Óptima" : v <= 15 ? "Normal" : v <= 25 ? "Ligera alteración" : v <= 35 ? "Moderada" : "Barrera dañada";
+  }
+  function mpaMelInterp(v: number) {
+    return v < 200 ? "Fototipo I-II" : v < 350 ? "Fototipo III-IV" : "Hiperpigmentación";
+  }
+  function mpaEryInterp(v: number) {
+    return v < 150 ? "Sin eritema" : v < 300 ? "Leve-moderado" : "Intenso / rosácea";
+  }
+  function mpaSeboInterp(v: number) {
+    return v < 30 ? "Asébacea / seca" : v < 100 ? "Normal" : v < 200 ? "Tendencia grasa" : "Hipersecreción";
+  }
+
+  function handleApplyMPA() {
+    setInputValue("hidra", mpaCorne < 30 ? 4 : mpaCorne < 45 ? 3 : mpaCorne < 60 ? 2 : mpaCorne < 70 ? 1 : 0);
+    setInputValue("elastic", mpaCuto < 0.5 ? 4.0 : mpaCuto < 0.65 ? 2.8 : mpaCuto < 0.8 ? 1.5 : 0.5);
+    setInputValue("tewl", mpaTewl);
+    setInputValue("pigment", mpaMel < 150 ? 0 : mpaMel < 200 ? 1 : mpaMel < 280 ? 2 : mpaMel < 350 ? 3 : 4);
+    setInputValue("eritema", mpaEry < 150 ? 0 : mpaEry < 230 ? 1 : mpaEry < 300 ? 2 : 3);
+    setInputValue("sebo", mpaSebo < 30 ? 0 : mpaSebo < 100 ? 1 : mpaSebo < 150 ? 2 : mpaSebo < 220 ? 3 : 4);
+  }
+
   const [fitzpatrick, setFitzpatrick] = useState(d?.fitzpatrick ?? "");
   const merz = d?.merz ?? {};
 
@@ -678,6 +713,68 @@ export default function ClinicalForm({
                 className={inputCls}
               />
             </Field>
+          </div>
+
+          <div className="bg-warm border border-rule rounded-xl p-4">
+            <p className={labelCls}>Simulador MPA (Courage+Khazaka)</p>
+            <p className="text-[11px] text-mid mb-3">
+              Practica con valores simulados de aparato real y conviértelos a la escala 0–4 de "Biofísicos manuales" con un clic. No sustituye una medición real.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-xs text-ink">
+                  <span>💧 Corneómetro (hidratación)</span>
+                  <span>{mpaCorne} u.a. — {mpaCorneInterp(mpaCorne)}</span>
+                </div>
+                <input type="range" min={0} max={120} value={mpaCorne} onChange={(e) => setMpaCorne(Number(e.target.value))} className="w-full" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-ink">
+                  <span>🔄 Cutómetro R2 (elasticidad)</span>
+                  <span>{mpaCuto.toFixed(2)} — {mpaCutoInterp(mpaCuto)}</span>
+                </div>
+                <input type="range" min={0} max={1} step={0.01} value={mpaCuto} onChange={(e) => setMpaCuto(Number(e.target.value))} className="w-full" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-ink">
+                  <span>🌊 Tewámetro (TEWL)</span>
+                  <span>{mpaTewl} g/h/m² — {mpaTewlInterp(mpaTewl)}</span>
+                </div>
+                <input type="range" min={0} max={60} step={0.5} value={mpaTewl} onChange={(e) => setMpaTewl(Number(e.target.value))} className="w-full" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-ink">
+                  <span>🌑 Mexámetro — Melanina</span>
+                  <span>{mpaMel} — {mpaMelInterp(mpaMel)}</span>
+                </div>
+                <input type="range" min={0} max={999} value={mpaMel} onChange={(e) => setMpaMel(Number(e.target.value))} className="w-full" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-ink">
+                  <span>🔴 Mexámetro — Eritema</span>
+                  <span>{mpaEry} — {mpaEryInterp(mpaEry)}</span>
+                </div>
+                <input type="range" min={0} max={999} value={mpaEry} onChange={(e) => setMpaEry(Number(e.target.value))} className="w-full" />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-ink">
+                  <span>✨ Sebúmetro</span>
+                  <span>{mpaSebo} — {mpaSeboInterp(mpaSebo)}</span>
+                </div>
+                <input type="range" min={0} max={220} value={mpaSebo} onChange={(e) => setMpaSebo(Number(e.target.value))} className="w-full" />
+              </div>
+            </div>
+
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={handleApplyMPA}
+                className="mt-3 text-xs bg-accent2 text-white rounded-full px-4 py-2 font-semibold hover:opacity-90 transition"
+              >
+                Usar estos valores en Biofísicos manuales
+              </button>
+            )}
           </div>
 
           <div>

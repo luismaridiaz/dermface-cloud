@@ -177,9 +177,11 @@ function PhotoCard({
 
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const uvCanvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const idxWrapRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const [uvApplied, setUvApplied] = useState(false);
 
   // ── MediaPipe (frontal) ──
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
@@ -294,6 +296,44 @@ function PhotoCard({
       setErrorMsg(e.message ?? "Error al borrar.");
       setDeleting(false);
     }
+  }
+
+  function handleApplyUV() {
+    const img = imgRef.current;
+    const canvas = uvCanvasRef.current;
+    if (!img || !canvas) return;
+    const w = img.clientWidth;
+    const h = img.clientHeight;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      let nr, nb;
+      if (lum < 140) {
+        nr = r * 1.8;
+        nb = b * 1.8;
+      } else {
+        nr = r * 0.7;
+        nb = b * 0.7;
+      }
+      if (r > 180 && g > 160 && b < 100) nr = nr * 1.5;
+      const ng = g * 0.4;
+      d[i] = nr > 255 ? 255 : nr;
+      d[i + 1] = ng > 255 ? 255 : ng;
+      d[i + 2] = nb > 255 ? 255 : nb;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    setUvApplied(true);
+  }
+
+  function handleResetUV() {
+    setUvApplied(false);
   }
 
   function drawLandmarks(landmarks: { x: number; y: number }[]) {
@@ -586,6 +626,12 @@ function PhotoCard({
           />
         )}
         {isFrontal && (
+          <canvas
+            ref={uvCanvasRef}
+            className={`absolute inset-0 w-full h-full pointer-events-none ${uvApplied ? "" : "hidden"}`}
+          />
+        )}
+        {isFrontal && (
           <div
             ref={idxWrapRef}
             onClick={handleIndexClick}
@@ -678,6 +724,40 @@ function PhotoCard({
               </div>
             )}
           </>
+        )}
+
+        {isFrontal && (
+          <div className="mt-3 border-t border-rule pt-2">
+            <p className="text-[11px] font-semibold text-mid uppercase tracking-wide mb-1">
+              🔦 Filtro UV simulado
+            </p>
+            <p className="text-[10px] text-mid mb-1">
+              Manipulación visual educativa de la foto (no es luz UV real, no detecta porfirinas reales) — solo para ilustrar el concepto de fotoenvejecimiento al paciente.
+            </p>
+            <div className="flex gap-1 flex-wrap mb-1">
+              <button
+                type="button"
+                onClick={handleApplyUV}
+                className="text-[10px] rounded-full px-2 py-1 bg-white border border-rule text-ink hover:border-accent/50"
+              >
+                Aplicar filtro UV simulado
+              </button>
+              {uvApplied && (
+                <button
+                  type="button"
+                  onClick={handleResetUV}
+                  className="text-[10px] rounded-full px-2 py-1 bg-white border border-rule text-ink hover:border-accent/50"
+                >
+                  ↺ Ver foto original
+                </button>
+              )}
+            </div>
+            {uvApplied && (
+              <p className="text-[10px] text-amber-700">
+                ⚠ Filtro simulado activo — no es un diagnóstico ni una medición real.
+              </p>
+            )}
+          </div>
         )}
 
         {isFrontal && (
