@@ -4,6 +4,7 @@ import { saveClinicalData } from "./actions";
 import ClinicalForm from "./ClinicalForm";
 import PhotoUploader from "./PhotoUploader";
 import PhotoGallery from "./PhotoGallery";
+import BeforeAfterComparator from "./BeforeAfterComparator";
 
 export default async function SessionPage({
   params,
@@ -92,6 +93,8 @@ export default async function SessionPage({
       <PhotoUploader patientId={session.patient_id} sessionId={id} />
 
       <PhotoGallery photos={photos} canDelete={canEdit} />
+
+      <BeforeAfterComparator />
 
       <ClinicalForm
         action={action}
