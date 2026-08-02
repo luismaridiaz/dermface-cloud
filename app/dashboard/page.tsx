@@ -48,6 +48,12 @@ export default async function DashboardPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-ink">Pacientes</h1>
+        <a
+          href="/api/export-patients"
+          className="text-xs bg-white border border-rule text-ink rounded-full px-4 py-2 hover:border-accent/50 transition"
+        >
+          ⬇ Exportar a Excel
+        </a>
       </div>
 
       {profile?.role === "staff" && !profile?.assigned_doctor_id && (
