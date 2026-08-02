@@ -108,18 +108,20 @@ function Scale0to3({
   name,
   label,
   value,
+  labels,
 }: {
   name: string;
   label: string;
   value?: number | null;
+  labels: [string, string, string, string];
 }) {
   return (
-    <Field label={`${label} (0–3)`}>
+    <Field label={label}>
       <select name={name} defaultValue={value ?? ""} className={inputCls}>
         <option value="">—</option>
         {[0, 1, 2, 3].map((v) => (
           <option key={v} value={v}>
-            {v}
+            {v} — {labels[v]}
           </option>
         ))}
       </select>
@@ -407,9 +409,24 @@ export default function ClinicalForm({
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <Scale0to3 name="sol" label="Exposición solar" value={d?.sol} />
-            <Scale0to3 name="tabaco" label="Tabaco" value={d?.tabaco} />
-            <Scale0to3 name="estres" label="Estrés" value={d?.estres} />
+            <Scale0to3
+              name="sol"
+              label="Exposición solar"
+              value={d?.sol}
+              labels={["Nula / mínima", "Moderada", "Alta", "Muy alta"]}
+            />
+            <Scale0to3
+              name="tabaco"
+              label="Tabaco"
+              value={d?.tabaco}
+              labels={["No fumador", "Ex-fumador", "Fumador leve", "Fumador activo"]}
+            />
+            <Scale0to3
+              name="estres"
+              label="Estrés"
+              value={d?.estres}
+              labels={["Ninguno", "Leve", "Moderado", "Alto"]}
+            />
           </div>
 
           <div>
@@ -585,7 +602,7 @@ export default function ClinicalForm({
           <div>
             <p className={labelCls}>Biofísicos manuales</p>
             <p className="text-[11px] text-mid mb-2">
-              Estimación clínica manual (sin aparato). Si algún día tienes un Corneómetro/Cutómetro/Tewámetro/Mexámetro/Sebúmetro real, usa sus valores como referencia con las escalas de abajo.
+              Estimación clínica manual (sin aparato). Preparado para importar en el futuro los aparatos reales de la suite MPA (Corneómetro/Cutómetro/Tewámetro/Mexámetro/Sebúmetro, Courage+Khazaka) — de momento, usa las escalas de abajo con criterio clínico.
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Field label="Hidratación (0–4)">
@@ -601,16 +618,17 @@ export default function ClinicalForm({
                   Snap test: pellizca y suelta la piel, mide el tiempo en volver. 0 óptima · 1 leve reducción · 2 moderada · 3 reducida · 4 severa. (Ref. Corneómetro: &gt;70 hidratada, 45-69 normal, 30-44 seca, &lt;30 muy seca.)
                 </p>
               </Field>
-              <Field label="Elasticidad (s)">
+              <Field label="Elasticidad (segundos, decimales)">
                 <input
                   name="elastic"
                   type="number"
                   step="0.1"
+                  inputMode="decimal"
                   defaultValue={d?.elastic ?? ""}
                   className={inputCls}
                 />
                 <p className="text-[10px] text-mid mt-1">
-                  Pinch test: pellizca 5s y cronometra cuánto tarda en volver a su sitio. &lt;1s excelente · 1-2s buena · 2-3s moderada · &gt;3s reducida (laxitud severa).
+                  Pinch test: pellizca 5s y cronometra cuánto tarda en volver a su sitio. Admite decimales (ej. 1.5). &lt;1s excelente · 1-2s buena · 2-3s moderada · &gt;3s reducida (laxitud severa).
                 </p>
               </Field>
               <Field label="Pigmentación (0–4)">
@@ -652,16 +670,17 @@ export default function ClinicalForm({
                   Rojez visible en reposo (no confundir con rubor pasajero). 0 sin eritema · 1-2 leve-moderado · 3-4 intenso/rosácea. (Ref. Mexámetro eritema: &lt;150 sin eritema, 150-300 leve-mod., &gt;300 intenso.)
                 </p>
               </Field>
-              <Field label="TEWL">
+              <Field label="TEWL (g/h/m², decimales)">
                 <input
                   name="tewl"
                   type="number"
                   step="0.1"
+                  inputMode="decimal"
                   defaultValue={d?.tewl ?? ""}
                   className={inputCls}
                 />
                 <p className="text-[10px] text-mid mt-1">
-                  Pérdida transepidérmica de agua — sin aparato, déjalo vacío o estima por sensación de tirantez/descamación. (Ref. Tewámetro g/h/m²: 0-10 óptima, 10-15 normal, 15-25 ligera alteración, 25-35 moderada, &gt;35 barrera dañada.)
+                  Pérdida transepidérmica de agua. Admite decimales (ej. 12.5). Sin aparato, déjalo vacío o estima por sensación de tirantez/descamación. (Ref. Tewámetro: 0-10 óptima, 10-15 normal, 15-25 ligera alteración, 25-35 moderada, &gt;35 barrera dañada.)
                 </p>
               </Field>
             </div>
@@ -692,6 +711,9 @@ export default function ClinicalForm({
                   <option value="Hasta 1 semana">Hasta 1 semana</option>
                   <option value="Sin restricción">Sin restricción</option>
                 </select>
+                <p className="text-[10px] text-mid mt-1">
+                  "Downtime" = tiempo de recuperación visible tras el procedimiento (enrojecimiento, hinchazón, costras, moratones) durante el cual la paciente prefiere no exponerse socialmente o laboralmente. HIFU y algunos rellenos pueden dejar hinchazón unos días; peelings profundos y láseres ablativos, más.
+                </p>
               </Field>
               <Field label="Embarazo/lactancia">
                 <select name="embarazo" defaultValue={d?.embarazo ?? ""} className={inputCls}>
