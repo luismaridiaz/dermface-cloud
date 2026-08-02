@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createPatient } from "./actions";
+import PatientsList from "./PatientsList";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -18,8 +18,31 @@ export default async function DashboardPage() {
   // auxiliar ve las de su médica asignada. No hace falta filtrar aquí.
   const { data: patients, error } = await supabase
     .from("patients")
-    .select("id, full_name, birth_date, created_at")
-    .order("created_at", { ascending: false });
+    .select("id, full_name, patient_number, created_at")
+    .order("patient_number", { ascending: true });
+
+  const { data: sessions } = await supabase
+    .from("sessions")
+    .select("patient_id, session_date")
+    .order("session_date", { ascending: false });
+
+  const statsByPatient = new Map<string, { count: number; lastVisit: string | null }>();
+  (sessions ?? []).forEach((s) => {
+    const cur = statsByPatient.get(s.patient_id) ?? { count: 0, lastVisit: null };
+    cur.count += 1;
+    if (!cur.lastVisit) cur.lastVisit = s.session_date; // ya viene ordenado desc
+    statsByPatient.set(s.patient_id, cur);
+  });
+
+  const patientRows = (patients ?? []).map((p) => ({
+    id: p.id,
+    full_name: p.full_name,
+    patient_number: p.patient_number,
+    sessionCount: statsByPatient.get(p.id)?.count ?? 0,
+    lastVisit: statsByPatient.get(p.id)?.lastVisit ?? null,
+  }));
+
+  const canDelete = profile?.role === "doctor";
 
   return (
     <div>
@@ -60,35 +83,13 @@ export default async function DashboardPage() {
         </form>
       </div>
 
-      <div className="bg-white border border-rule rounded-2xl divide-y divide-rule">
-        {error && (
-          <div className="p-4 text-sm text-red-700">
-            Error al cargar pacientes: {error.message}
-          </div>
-        )}
-        {patients && patients.length === 0 && (
-          <div className="p-6 text-sm text-mid text-center">
-            Todavía no hay pacientes. Añade la primera arriba.
-          </div>
-        )}
-        {patients?.map((p) => (
-          <Link
-            key={p.id}
-            href={`/dashboard/patients/${p.id}`}
-            className="p-4 flex items-center justify-between hover:bg-warm transition"
-          >
-            <div>
-              <div className="font-medium text-ink">{p.full_name}</div>
-              <div className="text-xs text-mid">
-                {p.birth_date ? `Nacimiento: ${p.birth_date}` : "Sin fecha de nacimiento"}
-              </div>
-            </div>
-            <div className="text-xs text-mid">
-              Alta: {new Date(p.created_at).toLocaleDateString("es-ES")}
-            </div>
-          </Link>
-        ))}
-      </div>
+      {error && (
+        <div className="mb-4 text-sm text-red-700">
+          Error al cargar pacientes: {error.message}
+        </div>
+      )}
+
+      <PatientsList patients={patientRows} canDelete={canDelete} />
     </div>
   );
 }

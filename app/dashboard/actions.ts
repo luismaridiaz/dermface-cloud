@@ -35,3 +35,19 @@ export async function createPatient(formData: FormData) {
 
   revalidatePath("/dashboard");
 }
+
+export async function deletePatient(patientId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado." };
+
+  // RLS (patients_write_own_doctor) ya bloquea el borrado si no eres la
+  // médica dueña de la paciente — esto es una segunda barrera de UI.
+  const { error } = await supabase.from("patients").delete().eq("id", patientId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  return { error: null };
+}
