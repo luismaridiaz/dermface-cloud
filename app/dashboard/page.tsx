@@ -69,11 +69,6 @@ export default async function DashboardPage() {
             required
             className="flex-1 border border-rule rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
           />
-          <input
-            type="date"
-            name="birth_date"
-            className="border border-rule rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
-          />
           <button
             type="submit"
             className="bg-accent2 text-white rounded-full px-5 py-2 text-sm font-semibold hover:opacity-90 transition whitespace-nowrap"
