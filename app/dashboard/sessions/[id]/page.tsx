@@ -93,7 +93,14 @@ export default async function SessionPage({
 
       <PhotoGallery photos={photos} canDelete={canEdit} />
 
-      <ClinicalForm action={action} initialData={clinical} readOnly={!canEdit} sessionId={id} />
+      <ClinicalForm
+        action={action}
+        initialData={clinical}
+        readOnly={!canEdit}
+        sessionId={id}
+        patientName={patientName}
+        sessionDate={session.session_date}
+      />
 
       {!canEdit && (
         <p className="mt-4 text-xs text-mid">

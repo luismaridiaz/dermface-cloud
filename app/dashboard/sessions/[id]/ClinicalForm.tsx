@@ -183,11 +183,15 @@ export default function ClinicalForm({
   initialData,
   readOnly,
   sessionId,
+  patientName,
+  sessionDate,
 }: {
   action: (formData: FormData) => void;
   initialData: ClinicalRow;
   readOnly: boolean;
   sessionId: string;
+  patientName: string;
+  sessionDate: string;
 }) {
   const [tab, setTab] = useState<Tab>("Clasificación");
   const d = initialData;
@@ -195,6 +199,7 @@ export default function ClinicalForm({
   const planRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [generating, setGenerating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   function getFormNumber(name: string): number {
     const el = formRef.current?.elements.namedItem(name) as
@@ -302,6 +307,82 @@ export default function ClinicalForm({
       setGenerating(false);
     }
   }
+
+  async function handleDownloadPDF() {
+    setDownloading(true);
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const marginX = 15;
+      const pageWidth = 210 - marginX * 2;
+      let y = 20;
+
+      function checkPageBreak(needed: number) {
+        if (y + needed > 285) {
+          doc.addPage();
+          y = 20;
+        }
+      }
+      function addTitle(text: string) {
+        doc.setFontSize(15);
+        doc.setFont("helvetica", "bold");
+        doc.text(text, marginX, y);
+        y += 8;
+      }
+      function addSubtitle(text: string) {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(110);
+        doc.text(text, marginX, y);
+        doc.setTextColor(0);
+        y += 9;
+      }
+      function addSectionHeader(text: string) {
+        checkPageBreak(10);
+        doc.setFontSize(11.5);
+        doc.setFont("helvetica", "bold");
+        doc.text(text, marginX, y);
+        y += 6;
+      }
+      function addBodyText(text: string) {
+        doc.setFontSize(9.5);
+        doc.setFont("helvetica", "normal");
+        const lines = doc.splitTextToSize(text || "—", pageWidth);
+        lines.forEach((line: string) => {
+          checkPageBreak(5);
+          doc.text(line, marginX, y);
+          y += 5;
+        });
+        y += 4;
+      }
+
+      const fechaTxt = new Date(sessionDate).toLocaleDateString("es-ES");
+      addTitle("DermFace Cloud — Informe clínico");
+      addSubtitle(`${patientName} · Sesión del ${fechaTxt}`);
+
+      addSectionHeader("Informe");
+      addBodyText(informeRef.current?.value || "");
+
+      addSectionHeader("Plan de tratamiento");
+      addBodyText(planRef.current?.value || "");
+
+      checkPageBreak(10);
+      doc.setFontSize(7.5);
+      doc.setTextColor(150);
+      doc.text(
+        "Generado por DermFace Cloud. Documento orientativo — el juicio clínico prevalece siempre.",
+        marginX,
+        y
+      );
+
+      const safeName = patientName.replace(/[^a-zA-Z0-9]+/g, "_");
+      const safeDate = new Date(sessionDate).toISOString().slice(0, 10);
+      doc.save(`informe-${safeName}-${safeDate}.pdf`);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const [glogau, setGlogau] = useState(d?.glogau ? String(d.glogau) : "");
   const [fitzpatrick, setFitzpatrick] = useState(d?.fitzpatrick ?? "");
   const merz = d?.merz ?? {};
@@ -765,14 +846,24 @@ export default function ClinicalForm({
             />
           </Field>
 
-          {!readOnly && (
+          <div className="flex gap-3 flex-wrap">
+            {!readOnly && (
+              <button
+                type="submit"
+                className="bg-accent2 text-white rounded-full px-6 py-2.5 text-sm font-semibold hover:opacity-90 transition"
+              >
+                Guardar sesión
+              </button>
+            )}
             <button
-              type="submit"
-              className="bg-accent2 text-white rounded-full px-6 py-2.5 text-sm font-semibold hover:opacity-90 transition"
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={downloading}
+              className="bg-white border border-rule text-ink rounded-full px-6 py-2.5 text-sm font-semibold hover:border-accent/50 transition disabled:opacity-60"
             >
-              Guardar sesión
+              {downloading ? "Generando PDF…" : "⬇ Descargar PDF"}
             </button>
-          )}
+          </div>
         </div>
       </fieldset>
     </form>
