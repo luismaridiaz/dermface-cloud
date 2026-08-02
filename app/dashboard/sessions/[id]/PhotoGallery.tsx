@@ -18,6 +18,10 @@ type Photo = {
   manual_nasofacial_angle?: number | null;
   manual_nasolabial_angle?: number | null;
   manual_mentolabial_angle?: number | null;
+  flacidez_index?: number | null;
+  ptosis_px?: number | null;
+  simetria_pct?: number | null;
+  rugosidad_contraste?: number | null;
 };
 
 const LATERAL_VIEWS = ["lateral_izq", "lateral_der"];
@@ -75,6 +79,10 @@ const MANUAL_ANGLE_TYPES: {
 const MANUAL_LIMITATION_NOTE =
   "⚠ Limitación: estos 2 clics calculan el ángulo agudo entre la línea trazada y la horizontal, no el ángulo anatómico clásico de la literatura (que a veces necesita 3 puntos). Úsalo como guía comparativa entre sesiones, no como medida cefalométrica de precisión.";
 
+type IndexMode = "flac-mand" | "flac-comis" | "ptosis" | "sim-left" | "sim-right" | null;
+
+type Pt = { x: number; y: number };
+
 // Se carga una sola vez y se reutiliza para todas las fotos de la página.
 let landmarkerPromise: Promise<any> | null = null;
 
@@ -101,6 +109,62 @@ async function getFaceLandmarker() {
   return landmarkerPromise;
 }
 
+// ── GLCM (rugosidad) — puerto fiel de computeGLCMFeatures() del HTML original ──
+function computeGLCMFeatures(imageData: ImageData, levels = 16, distance = 1) {
+  const data = imageData.data;
+  const width = imageData.width;
+  const height = imageData.height;
+  const gray = new Uint8Array(width * height);
+  for (let i = 0; i < data.length; i += 4) {
+    const grayVal = Math.floor(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    gray[i / 4] = Math.floor((grayVal * (levels - 1)) / 255);
+  }
+  const glcm: number[][] = [];
+  for (let gi = 0; gi < levels; gi++) glcm.push(new Array(levels).fill(0));
+  let totalPairs = 0;
+  const DIRS = [
+    { dx: distance, dy: 0 },
+    { dx: distance, dy: distance },
+    { dx: 0, dy: distance },
+    { dx: -distance, dy: distance },
+  ];
+  for (const { dx, dy } of DIRS) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const x2 = x + dx;
+        const y2 = y + dy;
+        if (x2 >= 0 && x2 < width && y2 >= 0 && y2 < height) {
+          const g1 = gray[y * width + x];
+          const g2 = gray[y2 * width + x2];
+          glcm[g1][g2]++;
+          glcm[g2][g1]++;
+          totalPairs += 2;
+        }
+      }
+    }
+  }
+  for (let a = 0; a < levels; a++)
+    for (let b = 0; b < levels; b++) glcm[a][b] /= totalPairs;
+
+  let contrast = 0, entropy = 0, energy = 0, homogeneity = 0;
+  for (let a = 0; a < levels; a++) {
+    for (let b = 0; b < levels; b++) {
+      const p = glcm[a][b];
+      const diff = a - b;
+      contrast += diff * diff * p;
+      homogeneity += p / (1 + Math.abs(diff));
+      if (p > 0) entropy -= p * Math.log2(p);
+      energy += p * p;
+    }
+  }
+  return {
+    contrast: Number(contrast.toFixed(2)),
+    homogeneity: Number(homogeneity.toFixed(3)),
+    entropy: Number(entropy.toFixed(3)),
+    energy: Number(energy.toFixed(4)),
+  };
+}
+
 function PhotoCard({
   photo,
   canDelete,
@@ -109,10 +173,12 @@ function PhotoCard({
   canDelete: boolean;
 }) {
   const isLateral = LATERAL_VIEWS.includes(photo.view_type ?? "");
+  const isFrontal = photo.view_type === "frontal";
 
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const idxWrapRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   // ── MediaPipe (frontal) ──
@@ -137,7 +203,7 @@ function PhotoCard({
 
   // ── Medición manual (lateral) ──
   const [angleType, setAngleType] = useState<ManualAngleKey>("nasofacial");
-  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
+  const [points, setPoints] = useState<Pt[]>([]);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualValues, setManualValues] = useState<
     Record<ManualAngleKey, number | null>
@@ -147,6 +213,67 @@ function PhotoCard({
     mentolabial: photo.manual_mentolabial_angle ?? null,
     cervicomental: photo.cervicomental_angle ?? null,
   });
+
+  // ── Índices avanzados (frontal): flacidez, ptosis, simetría, rugosidad ──
+  const [indexMode, setIndexMode] = useState<IndexMode>(null);
+  const [flacPts, setFlacPts] = useState<{ mand: Pt[]; comis: Pt[] }>({ mand: [], comis: [] });
+  const [ptosisPts, setPtosisPts] = useState<Pt[]>([]);
+  const [simPts, setSimPts] = useState<{ l: Pt[]; r: Pt[] }>({ l: [], r: [] });
+  const [flacRes, setFlacRes] = useState<{ idx: number; label: string } | null>(
+    photo.flacidez_index != null
+      ? { idx: photo.flacidez_index, label: photo.flacidez_index >= 1.2 ? "Normal (>1.2)" : "Flacidez (<1.2)" }
+      : null
+  );
+  const [ptosisRes, setPtosisRes] = useState<{ px: number; label: string } | null>(
+    photo.ptosis_px != null
+      ? {
+          px: photo.ptosis_px,
+          label:
+            photo.ptosis_px < 30
+              ? "Compatible con ptosis (MRD1 reducido)"
+              : photo.ptosis_px < 80
+              ? "Dentro de rango normal"
+              : "Posible retracción palpebral",
+        }
+      : null
+  );
+  const [simRes, setSimRes] = useState<{ pct: number; label: string } | null>(
+    photo.simetria_pct != null
+      ? {
+          pct: photo.simetria_pct,
+          label:
+            photo.simetria_pct >= 85
+              ? "Aceptable"
+              : photo.simetria_pct >= 75
+              ? "Leve asimetría"
+              : "Asimetría significativa",
+        }
+      : null
+  );
+  const [rugoRes, setRugoRes] = useState<{
+    contrast: number;
+    homogeneity: number;
+    entropy: number;
+    energy: number;
+    label: string;
+  } | null>(
+    photo.rugosidad_contraste != null
+      ? {
+          contrast: photo.rugosidad_contraste,
+          homogeneity: 0,
+          entropy: 0,
+          energy: 0,
+          label:
+            photo.rugosidad_contraste > 180
+              ? "Alta rugosidad / textura irregular"
+              : photo.rugosidad_contraste > 90
+              ? "Rugosidad moderada"
+              : "Textura suave / baja rugosidad",
+        }
+      : null
+  );
+  const [rugoLoading, setRugoLoading] = useState(false);
+  const [indexSaving, setIndexSaving] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -309,7 +436,136 @@ function PhotoCard({
     }
   }
 
+  async function saveIndex(fields: Record<string, number>) {
+    setIndexSaving(true);
+    const supabase = createClient();
+    await supabase.from("session_photos").update(fields).eq("id", photo.id);
+    setIndexSaving(false);
+  }
+
+  function startIndexMode(mode: IndexMode) {
+    setIndexMode(mode);
+    if (mode === "flac-mand") setFlacPts({ mand: [], comis: [] });
+    if (mode === "flac-comis") setFlacPts((p) => ({ ...p, comis: [] }));
+    if (mode === "ptosis") setPtosisPts([]);
+    if (mode === "sim-left") setSimPts((p) => ({ ...p, l: [] }));
+    if (mode === "sim-right") setSimPts((p) => ({ ...p, r: [] }));
+  }
+
+  function handleIndexClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (!indexMode) return;
+    const rect = idxWrapRef.current!.getBoundingClientRect();
+    const p: Pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+    if (indexMode === "flac-mand") {
+      const next = [...flacPts.mand, p];
+      setFlacPts((s) => ({ ...s, mand: next }));
+      if (next.length === 2) setIndexMode(null);
+    } else if (indexMode === "flac-comis") {
+      const next = [...flacPts.comis, p];
+      const updated = { ...flacPts, comis: next };
+      setFlacPts(updated);
+      if (next.length === 2) {
+        setIndexMode(null);
+        if (updated.mand.length === 2) {
+          const dm = Math.hypot(
+            updated.mand[1].x - updated.mand[0].x,
+            updated.mand[1].y - updated.mand[0].y
+          );
+          const dc = Math.hypot(
+            updated.comis[1].x - updated.comis[0].x,
+            updated.comis[1].y - updated.comis[0].y
+          );
+          if (dc) {
+            const idx = Number((dm / dc).toFixed(2));
+            const label = idx >= 1.2 ? "Normal (>1.2)" : "Flacidez (<1.2)";
+            setFlacRes({ idx, label });
+            saveIndex({ flacidez_index: idx });
+          }
+        }
+      }
+    } else if (indexMode === "ptosis") {
+      const next = [...ptosisPts, p];
+      setPtosisPts(next);
+      if (next.length === 2) {
+        setIndexMode(null);
+        const px = Math.hypot(next[1].x - next[0].x, next[1].y - next[0].y);
+        const label =
+          px < 30
+            ? "Compatible con ptosis (MRD1 reducido)"
+            : px < 80
+            ? "Dentro de rango normal"
+            : "Posible retracción palpebral";
+        setPtosisRes({ px: Number(px.toFixed(0)), label });
+        saveIndex({ ptosis_px: Number(px.toFixed(0)) });
+      }
+    } else if (indexMode === "sim-left") {
+      const next = [...simPts.l, p];
+      const updated = { ...simPts, l: next };
+      setSimPts(updated);
+      if (next.length === 2) {
+        setIndexMode(null);
+        if (updated.r.length === 2) computeSim(updated);
+      }
+    } else if (indexMode === "sim-right") {
+      const next = [...simPts.r, p];
+      const updated = { ...simPts, r: next };
+      setSimPts(updated);
+      if (next.length === 2) {
+        setIndexMode(null);
+        if (updated.l.length === 2) computeSim(updated);
+      }
+    }
+  }
+
+  function computeSim(pts: { l: Pt[]; r: Pt[] }) {
+    const dL = Math.hypot(pts.l[1].x - pts.l[0].x, pts.l[1].y - pts.l[0].y);
+    const dR = Math.hypot(pts.r[1].x - pts.r[0].x, pts.r[1].y - pts.r[0].y);
+    if (!Math.max(dL, dR)) return;
+    const s = Number(((Math.min(dL, dR) / Math.max(dL, dR)) * 100).toFixed(1));
+    const label = s >= 85 ? "Aceptable" : s >= 75 ? "Leve asimetría" : "Asimetría significativa";
+    setSimRes({ pct: s, label });
+    saveIndex({ simetria_pct: s });
+  }
+
+  async function handleRugosidad() {
+    if (!photo.url) return;
+    setRugoLoading(true);
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("No se pudo cargar la foto."));
+        img.src = photo.url as string;
+      });
+      const tmp = document.createElement("canvas");
+      tmp.width = 120;
+      tmp.height = 120;
+      const tc = tmp.getContext("2d", { willReadFrequently: true })!;
+      tc.drawImage(img, 0, 0, 120, 120);
+      const gl = computeGLCMFeatures(tc.getImageData(0, 0, 120, 120), 16, 1);
+      const label =
+        gl.contrast > 180
+          ? "Alta rugosidad / textura irregular"
+          : gl.contrast > 90
+          ? "Rugosidad moderada"
+          : "Textura suave / baja rugosidad";
+      setRugoRes({ ...gl, label });
+      await saveIndex({ rugosidad_contraste: gl.contrast });
+    } catch (e: any) {
+      setErrorMsg(e.message ?? "Error al calcular rugosidad.");
+    } finally {
+      setRugoLoading(false);
+    }
+  }
+
   const currentType = MANUAL_ANGLE_TYPES.find((a) => a.value === angleType)!;
+
+  const idxBtnCls = (active: boolean) =>
+    `text-[10px] rounded-full px-2 py-1 transition ${
+      active ? "bg-accent text-white" : "bg-white border border-rule text-ink hover:border-accent/50"
+    }`;
 
   return (
     <div className="bg-white border border-rule rounded-xl overflow-hidden">
@@ -328,6 +584,29 @@ function PhotoCard({
             ref={canvasRef}
             className="absolute inset-0 w-full h-full pointer-events-none"
           />
+        )}
+        {isFrontal && (
+          <div
+            ref={idxWrapRef}
+            onClick={handleIndexClick}
+            className={`absolute inset-0 ${indexMode ? "cursor-crosshair" : "pointer-events-none"}`}
+          >
+            {flacPts.mand.map((p, i) => (
+              <span key={"fm" + i} className="absolute w-2.5 h-2.5 bg-blue-600 border border-white rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: p.x, top: p.y }} />
+            ))}
+            {flacPts.comis.map((p, i) => (
+              <span key={"fc" + i} className="absolute w-2.5 h-2.5 bg-purple-600 border border-white rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: p.x, top: p.y }} />
+            ))}
+            {ptosisPts.map((p, i) => (
+              <span key={"pt" + i} className="absolute w-2.5 h-2.5 bg-amber-500 border border-white rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: p.x, top: p.y }} />
+            ))}
+            {simPts.l.map((p, i) => (
+              <span key={"sl" + i} className="absolute w-2.5 h-2.5 bg-teal-600 border border-white rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: p.x, top: p.y }} />
+            ))}
+            {simPts.r.map((p, i) => (
+              <span key={"sr" + i} className="absolute w-2.5 h-2.5 bg-pink-600 border border-white rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: p.x, top: p.y }} />
+            ))}
+          </div>
         )}
         {isLateral && (
           <div
@@ -399,6 +678,75 @@ function PhotoCard({
               </div>
             )}
           </>
+        )}
+
+        {isFrontal && (
+          <div className="mt-3 border-t border-rule pt-2">
+            <p className="text-[11px] font-semibold text-mid uppercase tracking-wide mb-1">
+              Índices avanzados (clics)
+            </p>
+
+            <p className="text-[10px] text-mid mb-1">
+              📏 Flacidez mandibular — ratio ancho mandíbula / ancho comisuras. &gt;1.2 normal, &lt;1.2 flacidez.
+            </p>
+            <div className="flex gap-1 flex-wrap mb-2">
+              <button type="button" className={idxBtnCls(indexMode === "flac-mand")} onClick={() => startIndexMode("flac-mand")}>
+                1. Mandíbula (2 clics: izq→dcha)
+              </button>
+              <button type="button" className={idxBtnCls(indexMode === "flac-comis")} onClick={() => startIndexMode("flac-comis")}>
+                2. Comisuras (2 clics: izq→dcha)
+              </button>
+            </div>
+            {flacRes && (
+              <p className="text-xs text-ink mb-2">Índice: {flacRes.idx} — {flacRes.label}</p>
+            )}
+
+            <p className="text-[10px] text-mid mb-1">
+              👁 Ptosis palpebral (MRD1 aprox.) — clic 1: margen palpebral superior · clic 2: centro de la pupila.
+            </p>
+            <div className="flex gap-1 flex-wrap mb-2">
+              <button type="button" className={idxBtnCls(indexMode === "ptosis")} onClick={() => startIndexMode("ptosis")}>
+                1. Margen → 2. Pupila
+              </button>
+            </div>
+            {ptosisRes && (
+              <p className="text-xs text-ink mb-2">{ptosisRes.px}px — {ptosisRes.label} <span className="text-mid">(sin calibrar a mm)</span></p>
+            )}
+
+            <p className="text-[10px] text-mid mb-1">
+              ⚖️ Simetría facial — marca 2 puntos equivalentes en cada hemicara (ej. canto externo del ojo + comisura). &gt;85% aceptable.
+            </p>
+            <div className="flex gap-1 flex-wrap mb-2">
+              <button type="button" className={idxBtnCls(indexMode === "sim-left")} onClick={() => startIndexMode("sim-left")}>
+                Hemicara IZQ (2 clics)
+              </button>
+              <button type="button" className={idxBtnCls(indexMode === "sim-right")} onClick={() => startIndexMode("sim-right")}>
+                Hemicara DCHA (2 clics)
+              </button>
+            </div>
+            {simRes && (
+              <p className="text-xs text-ink mb-2">Simetría: {simRes.pct}% — {simRes.label}</p>
+            )}
+
+            <p className="text-[10px] text-mid mb-1">
+              🔳 Rugosidad cutánea — análisis de textura automático (GLCM) sobre la foto completa, sin clics.
+            </p>
+            <button
+              type="button"
+              onClick={handleRugosidad}
+              disabled={rugoLoading}
+              className="text-[10px] rounded-full px-2 py-1 bg-white border border-rule text-ink hover:border-accent/50 disabled:opacity-60"
+            >
+              {rugoLoading ? "Calculando…" : "Calcular rugosidad"}
+            </button>
+            {rugoRes && (
+              <p className="text-xs text-ink mt-1">
+                Contraste: {rugoRes.contrast} — {rugoRes.label}
+              </p>
+            )}
+
+            {indexSaving && <p className="text-[10px] text-mid mt-1">Guardando…</p>}
+          </div>
         )}
 
         {isLateral && (
