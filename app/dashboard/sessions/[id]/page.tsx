@@ -100,6 +100,7 @@ export default async function SessionPage({
         sessionId={id}
         patientName={patientName}
         sessionDate={session.session_date}
+        photos={photos}
       />
 
       {!canEdit && (

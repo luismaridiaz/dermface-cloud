@@ -186,6 +186,7 @@ export default function ClinicalForm({
   sessionId,
   patientName,
   sessionDate,
+  photos,
 }: {
   action: (formData: FormData) => void;
   initialData: ClinicalRow;
@@ -193,6 +194,7 @@ export default function ClinicalForm({
   sessionId: string;
   patientName: string;
   sessionDate: string;
+  photos: { url: string | null; view_type: string | null }[];
 }) {
   const [tab, setTab] = useState<Tab>("Clasificación");
   const d = initialData;
@@ -201,6 +203,7 @@ export default function ClinicalForm({
   const formRef = useRef<HTMLFormElement>(null);
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadingWord, setDownloadingWord] = useState(false);
 
   function getFormNumber(name: string): number {
     const el = formRef.current?.elements.namedItem(name) as
@@ -309,6 +312,66 @@ export default function ClinicalForm({
     }
   }
 
+  function buildSummaryLines(): string[] {
+    const lines: string[] = [];
+    const edad = getFormValue("edad");
+    const sexo = getFormValue("sexo");
+    const motivo = getFormValue("motivo");
+    const previos = getFormValue("previos");
+    const peso = getFormValue("peso");
+    const talla = getFormValue("talla");
+    const glogauV = getFormValue("glogau");
+    const fitzV = getFormValue("fitzpatrick");
+
+    lines.push(`Edad / sexo: ${edad || "—"} años / ${sexo || "—"}`);
+    lines.push(`Motivo de consulta: ${motivo || "—"}`);
+    lines.push(`Antecedentes: ${previos || "—"}`);
+    lines.push(`Peso / talla: ${peso || "—"} kg / ${talla || "—"} cm`);
+    lines.push(`Glogau: ${glogauV || "—"}  ·  Fitzpatrick: ${fitzV || "—"}`);
+    lines.push("");
+    lines.push("NAU (0–3): " +
+      ["fore", "perio", "malar", "naso", "ment", "neck"]
+        .map((k) => `${k}=${getFormValue(`nau_${k}`) || "—"}`)
+        .join("  "));
+    lines.push(`Laxitud: ${getFormValue("nau_lax") || "—"}/4  ·  Calidad de piel: ${getFormValue("nau_skin") || "—"}%  ·  Asimetría: ${getFormValue("nau_asym") || "—"}%`);
+    lines.push("");
+    lines.push(
+      `Biofísicos — Hidratación: ${getFormValue("hidra") || "—"}/4  ·  Elasticidad: ${getFormValue("elastic") || "—"}s  ·  Pigmentación: ${getFormValue("pigment") || "—"}/4  ·  Sebo: ${getFormValue("sebo") || "—"}/4  ·  Eritema: ${getFormValue("eritema") || "—"}/4  ·  TEWL: ${getFormValue("tewl") || "—"}`
+    );
+    lines.push("");
+    lines.push("Merz (reposo/dinámica):");
+    MERZ_GROUPS.forEach((g) => {
+      const parts = g.regions.map((r) => {
+        const rest = getFormValue(`merz_${r.id}_rest`) || "—";
+        const dyn = getFormValue(`merz_${r.id}_dyn`) || "—";
+        return `${r.label} ${rest}/${dyn}`;
+      });
+      lines.push(`  ${g.label}: ${parts.join("  ·  ")}`);
+    });
+    return lines;
+  }
+
+  async function loadImageAsDataURL(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.src = dataUrl;
+      });
+      return { dataUrl, ...dims };
+    } catch {
+      return null;
+    }
+  }
+
   async function handleDownloadPDF() {
     setDownloading(true);
     try {
@@ -361,6 +424,35 @@ export default function ClinicalForm({
       addTitle("DermFace Cloud — Informe clínico");
       addSubtitle(`${patientName} · Sesión del ${fechaTxt}`);
 
+      addSectionHeader("Resumen clínico");
+      addBodyText(buildSummaryLines().join("\n"));
+
+      // Fotos (frontal y lateral si existen)
+      const photosToInclude = photos.filter((p) => p.url).slice(0, 4);
+      if (photosToInclude.length > 0) {
+        addSectionHeader("Fotografías");
+        const imgW = (pageWidth - 6) / 2;
+        let colX = marginX;
+        let rowMaxH = 0;
+        for (let i = 0; i < photosToInclude.length; i++) {
+          const loaded = await loadImageAsDataURL(photosToInclude[i].url as string);
+          if (!loaded) continue;
+          const imgH = (loaded.h / loaded.w) * imgW;
+          checkPageBreak(imgH + 6);
+          doc.addImage(loaded.dataUrl, "JPEG", colX, y, imgW, imgH);
+          rowMaxH = Math.max(rowMaxH, imgH);
+          if (colX === marginX) {
+            colX = marginX + imgW + 6;
+          } else {
+            colX = marginX;
+            y += rowMaxH + 6;
+            rowMaxH = 0;
+          }
+        }
+        if (colX !== marginX) y += rowMaxH + 6;
+        y += 4;
+      }
+
       addSectionHeader("Informe");
       addBodyText(informeRef.current?.value || "");
 
@@ -381,6 +473,84 @@ export default function ClinicalForm({
       doc.save(`informe-${safeName}-${safeDate}.pdf`);
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleDownloadWord() {
+    setDownloadingWord(true);
+    try {
+      const {
+        Document,
+        Packer,
+        Paragraph,
+        TextRun,
+        HeadingLevel,
+      } = await import("docx");
+
+      const fechaTxt = new Date(sessionDate).toLocaleDateString("es-ES");
+      const summaryLines = buildSummaryLines();
+
+      function textBlock(text: string) {
+        return text.split("\n").map(
+          (line) =>
+            new Paragraph({
+              children: [new TextRun({ text: line || " ", size: 20 })],
+            })
+        );
+      }
+
+      const doc = new Document({
+        sections: [
+          {
+            children: [
+              new Paragraph({
+                text: "DermFace Cloud — Informe clínico",
+                heading: HeadingLevel.HEADING_1,
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `${patientName} · Sesión del ${fechaTxt}`,
+                    italics: true,
+                    color: "666666",
+                  }),
+                ],
+              }),
+              new Paragraph({ text: "" }),
+              new Paragraph({ text: "Resumen clínico", heading: HeadingLevel.HEADING_2 }),
+              ...textBlock(summaryLines.join("\n")),
+              new Paragraph({ text: "" }),
+              new Paragraph({ text: "Informe", heading: HeadingLevel.HEADING_2 }),
+              ...textBlock(informeRef.current?.value || "—"),
+              new Paragraph({ text: "" }),
+              new Paragraph({ text: "Plan de tratamiento", heading: HeadingLevel.HEADING_2 }),
+              ...textBlock(planRef.current?.value || "—"),
+              new Paragraph({ text: "" }),
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: "Generado por DermFace Cloud. Documento orientativo — el juicio clínico prevalece siempre.",
+                    size: 16,
+                    color: "999999",
+                  }),
+                ],
+              }),
+            ],
+          },
+        ],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const safeName = patientName.replace(/[^a-zA-Z0-9]+/g, "_");
+      const safeDate = new Date(sessionDate).toISOString().slice(0, 10);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `informe-${safeName}-${safeDate}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingWord(false);
     }
   }
 
@@ -965,6 +1135,14 @@ export default function ClinicalForm({
               className="bg-white border border-rule text-ink rounded-full px-6 py-2.5 text-sm font-semibold hover:border-accent/50 transition disabled:opacity-60"
             >
               {downloading ? "Generando PDF…" : "⬇ Descargar PDF"}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadWord}
+              disabled={downloadingWord}
+              className="bg-white border border-rule text-ink rounded-full px-6 py-2.5 text-sm font-semibold hover:border-accent/50 transition disabled:opacity-60"
+            >
+              {downloadingWord ? "Generando Word…" : "⬇ Descargar Word"}
             </button>
           </div>
         </div>
