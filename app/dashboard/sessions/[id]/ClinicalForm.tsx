@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { generateReport } from "./actions";
+import BeforeAfterComparator from "./BeforeAfterComparator";
 
 const MERZ_GROUPS = [
   {
@@ -41,7 +42,7 @@ const MERZ_GROUPS = [
   },
 ];
 
-const TABS = ["Clasificación", "Merz", "NAU", "Informe"] as const;
+const TABS = ["Clasificación", "Merz", "NAU", "Comparador", "Informe"] as const;
 type Tab = (typeof TABS)[number];
 
 type MerzScore = { rest: number | null; dyn: number | null };
@@ -863,6 +864,11 @@ export default function ClinicalForm({
               </Field>
             </div>
           </div>
+        </div>
+
+        {/* ── Comparador ── */}
+        <div className={tab === "Comparador" ? "space-y-5" : "hidden"}>
+          <BeforeAfterComparator />
         </div>
 
         {/* ── Informe ── */}
