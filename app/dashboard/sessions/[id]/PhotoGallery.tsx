@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { renderTriangleWarp, computeWarpDst, applyNeckTreatment } from "./warpEngine";
 
 type Photo = {
   id: string;
@@ -79,7 +80,16 @@ const MANUAL_ANGLE_TYPES: {
 const MANUAL_LIMITATION_NOTE =
   "⚠ Limitación: estos 2 clics calculan el ángulo agudo entre la línea trazada y la horizontal, no el ángulo anatómico clásico de la literatura (que a veces necesita 3 puntos). Úsalo como guía comparativa entre sesiones, no como medida cefalométrica de precisión.";
 
-type IndexMode = "flac-mand" | "flac-comis" | "ptosis" | "sim-left" | "sim-right" | null;
+type IndexMode =
+  | "flac-mand"
+  | "flac-comis"
+  | "ptosis"
+  | "sim-left"
+  | "sim-right"
+  | "frontal-cerv"
+  | "frontal-ceja"
+  | "frontal-pupil"
+  | null;
 
 type Pt = { x: number; y: number };
 
@@ -182,8 +192,17 @@ function PhotoCard({
   const idxWrapRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [uvApplied, setUvApplied] = useState(false);
+  const warpCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [warpApplied, setWarpApplied] = useState(false);
+  const [warpIntensity, setWarpIntensity] = useState(0);
+  const [warpNeck, setWarpNeck] = useState(false);
+  const [warpError, setWarpError] = useState<string | null>(null);
 
   // ── MediaPipe (frontal) ──
+  const landmarksRef = useRef<{ x: number; y: number }[] | null>(
+    (photo.landmarks as { x: number; y: number }[] | undefined) ?? null
+  );
+  const [frankfurtOn, setFrankfurtOn] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
     photo.landmarks ? "done" : "idle"
   );
@@ -219,6 +238,12 @@ function PhotoCard({
   // ── Índices avanzados (frontal): flacidez, ptosis, simetría, rugosidad ──
   const [indexMode, setIndexMode] = useState<IndexMode>(null);
   const [flacPts, setFlacPts] = useState<{ mand: Pt[]; comis: Pt[] }>({ mand: [], comis: [] });
+  const [frontalAnglePts, setFrontalAnglePts] = useState<Pt[]>([]);
+  const [frontalAngleHistory, setFrontalAngleHistory] = useState<Record<"cerv" | "ceja" | "pupil", number[]>>({
+    cerv: [],
+    ceja: [],
+    pupil: [],
+  });
   const [ptosisPts, setPtosisPts] = useState<Pt[]>([]);
   const [simPts, setSimPts] = useState<{ l: Pt[]; r: Pt[] }>({ l: [], r: [] });
   const [flacRes, setFlacRes] = useState<{ idx: number; label: string } | null>(
@@ -280,6 +305,11 @@ function PhotoCard({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  useEffect(() => {
+    if (landmarksRef.current) drawLandmarks(landmarksRef.current, frankfurtOn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frankfurtOn]);
+
   async function handleDelete() {
     if (!confirm("¿Borrar esta foto? No se puede deshacer.")) return;
     setDeleting(true);
@@ -336,7 +366,40 @@ function PhotoCard({
     setUvApplied(false);
   }
 
-  function drawLandmarks(landmarks: { x: number; y: number }[]) {
+  async function handleApplyWarp() {
+    setWarpError(null);
+    const lm = photo.landmarks as { x: number; y: number }[] | undefined;
+    if (!lm) {
+      setWarpError("Detecta primero con MediaPipe (arriba) — sin los 468 puntos no hay malla que deformar.");
+      return;
+    }
+    const canvas = warpCanvasRef.current;
+    if (!canvas || !photo.url) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("No se pudo cargar la foto."));
+      img.src = photo.url as string;
+    });
+
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+    const landmarksPx = lm.map((p) => ({ x: p.x * W, y: p.y * H }));
+
+    const dst = computeWarpDst(landmarksPx, H, warpIntensity);
+    renderTriangleWarp(canvas, img, landmarksPx, dst);
+    if (warpNeck) applyNeckTreatment(canvas, landmarksPx);
+    setWarpApplied(true);
+  }
+
+  function handleResetWarp() {
+    setWarpApplied(false);
+    setWarpIntensity(0);
+  }
+
+  function drawLandmarks(landmarks: { x: number; y: number }[], showFrankfurt = false) {
     const img = imgRef.current;
     const canvas = canvasRef.current;
     if (!img || !canvas) return;
@@ -355,6 +418,23 @@ function PhotoCard({
       ctx.arc(x, y, 1.2, 0, Math.PI * 2);
       ctx.fill();
     });
+    if (showFrankfurt) {
+      // Aproximación: borde orbital inferior (145/374) → zona del trago (234/454).
+      // No hay landmark oficial de "trago" en la malla de 468 puntos.
+      const pt = (i: number) => ({ x: landmarks[i].x * displayW, y: landmarks[i].y * displayH });
+      const rOrb = pt(145), rEar = pt(234);
+      const lOrb = pt(374), lEar = pt(454);
+      ctx.strokeStyle = "#eab308";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(rOrb.x, rOrb.y);
+      ctx.lineTo(rEar.x, rEar.y);
+      ctx.moveTo(lOrb.x, lOrb.y);
+      ctx.lineTo(lEar.x, lEar.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 
   async function handleDetect() {
@@ -420,7 +500,8 @@ function PhotoCard({
       const bIzq = Number((lBrowX < rBrowX ? browA : browB).toFixed(1));
       const bDer = Number((lBrowX < rBrowX ? browB : browA).toFixed(1));
 
-      drawLandmarks(lm);
+      landmarksRef.current = lm;
+      drawLandmarks(lm, frankfurtOn);
       setAngle(cerv);
       setInterpupilar(interpDeg);
       setAsymmetry(asimPct);
@@ -490,6 +571,8 @@ function PhotoCard({
     if (mode === "ptosis") setPtosisPts([]);
     if (mode === "sim-left") setSimPts((p) => ({ ...p, l: [] }));
     if (mode === "sim-right") setSimPts((p) => ({ ...p, r: [] }));
+    if (mode === "frontal-cerv" || mode === "frontal-ceja" || mode === "frontal-pupil")
+      setFrontalAnglePts([]);
   }
 
   function handleIndexClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -554,6 +637,26 @@ function PhotoCard({
       if (next.length === 2) {
         setIndexMode(null);
         if (updated.l.length === 2) computeSim(updated);
+      }
+    } else if (
+      indexMode === "frontal-cerv" ||
+      indexMode === "frontal-ceja" ||
+      indexMode === "frontal-pupil"
+    ) {
+      const next = [...frontalAnglePts, p];
+      setFrontalAnglePts(next);
+      if (next.length === 2) {
+        setIndexMode(null);
+        const dx = next[1].x - next[0].x;
+        const dy = next[1].y - next[0].y;
+        const deg = Number(
+          ((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI).toFixed(1)
+        );
+        const key = indexMode === "frontal-cerv" ? "cerv" : indexMode === "frontal-ceja" ? "ceja" : "pupil";
+        setFrontalAngleHistory((prev) => ({
+          ...prev,
+          [key]: [...prev[key], deg].slice(-3),
+        }));
       }
     }
   }
@@ -632,6 +735,12 @@ function PhotoCard({
           />
         )}
         {isFrontal && (
+          <canvas
+            ref={warpCanvasRef}
+            className={`absolute inset-0 w-full h-full pointer-events-none ${warpApplied ? "" : "hidden"}`}
+          />
+        )}
+        {isFrontal && (
           <div
             ref={idxWrapRef}
             onClick={handleIndexClick}
@@ -651,6 +760,9 @@ function PhotoCard({
             ))}
             {simPts.r.map((p, i) => (
               <span key={"sr" + i} className="absolute w-2.5 h-2.5 bg-pink-600 border border-white rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: p.x, top: p.y }} />
+            ))}
+            {frontalAnglePts.map((p, i) => (
+              <span key={"fa" + i} className="absolute w-2.5 h-2.5 bg-orange-500 border border-white rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: p.x, top: p.y }} />
             ))}
           </div>
         )}
@@ -702,6 +814,17 @@ function PhotoCard({
                 ? "Volver a detectar"
                 : "Detectar (MediaPipe)"}
             </button>
+            {isFrontal && status === "done" && (
+              <button
+                type="button"
+                onClick={() => setFrankfurtOn((v) => !v)}
+                className={`mt-1 ml-1 text-xs rounded-full px-3 py-1 ${
+                  frankfurtOn ? "bg-amber-500 text-white" : "bg-white border border-rule text-ink"
+                }`}
+              >
+                📐 Plano de Frankfurt (aprox.)
+              </button>
+            )}
             {angle !== null && (
               <div className="text-xs text-ink mt-1 space-y-0.5">
                 <p>
@@ -757,6 +880,93 @@ function PhotoCard({
                 ⚠ Filtro simulado activo — no es un diagnóstico ni una medición real.
               </p>
             )}
+          </div>
+        )}
+
+        {isFrontal && (
+          <div className="mt-3 border-t border-rule pt-2">
+            <p className="text-[11px] font-semibold text-mid uppercase tracking-wide mb-1">
+              🧪 Simulación de resultado (cejas · mejillas · mandíbula)
+            </p>
+            <p className="text-[10px] text-mid mb-1">
+              Desplaza píxeles de la propia foto usando la malla de 468 puntos — no simula tejido, músculo ni piel. Empieza en 0% y sube poco a poco; para en cuanto se vea artificial. Necesita haber detectado con MediaPipe antes (arriba).
+            </p>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] text-mid min-w-[55px]">Intensidad</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={warpIntensity}
+                onChange={(e) => setWarpIntensity(Number(e.target.value))}
+                className="flex-1"
+              />
+              <span className="text-[10px] text-ink min-w-[30px] text-right">{warpIntensity}%</span>
+            </div>
+            <label className="flex items-center gap-1.5 text-[10px] text-ink mb-1">
+              <input type="checkbox" checked={warpNeck} onChange={(e) => setWarpNeck(e.target.checked)} />
+              Incluir cuello (solo luz/suavizado, sin desplazar geometría)
+            </label>
+            <div className="flex gap-1 flex-wrap mb-1">
+              <button
+                type="button"
+                onClick={handleApplyWarp}
+                className="text-[10px] rounded-full px-2 py-1 bg-accent text-white hover:opacity-90"
+              >
+                ✨ Aplicar simulación
+              </button>
+              {warpApplied && (
+                <button
+                  type="button"
+                  onClick={handleResetWarp}
+                  className="text-[10px] rounded-full px-2 py-1 bg-white border border-rule text-ink hover:border-accent/50"
+                >
+                  ↺ Ver original
+                </button>
+              )}
+            </div>
+            {warpApplied && (
+              <p className="text-[10px] text-amber-700">
+                ⚠ Simulación visual educativa al {warpIntensity}% — NO es una predicción médica del resultado real.
+              </p>
+            )}
+            {warpError && <p className="text-[10px] text-red-700">{warpError}</p>}
+          </div>
+        )}
+
+        {isFrontal && (
+          <div className="mt-3 border-t border-rule pt-2">
+            <p className="text-[11px] font-semibold text-mid uppercase tracking-wide mb-1">
+              Medición manual de ángulos (2 clics)
+            </p>
+            <p className="text-[10px] text-mid mb-1">
+              Alternativa manual a MediaPipe. Cervicomental: clic en punto submentoniano → clic en punto cervical anterior (80–95°). Inclin. ceja: clic en inicio de la ceja → clic en la cola (10–20°). Interpupilar: clic en centro pupila derecha → clic en centro pupila izquierda (ideal 0°).
+            </p>
+            <div className="flex gap-1 flex-wrap mb-1">
+              <button type="button" className={idxBtnCls(indexMode === "frontal-cerv")} onClick={() => startIndexMode("frontal-cerv")}>
+                📐 Cervicomental
+              </button>
+              <button type="button" className={idxBtnCls(indexMode === "frontal-ceja")} onClick={() => startIndexMode("frontal-ceja")}>
+                📐 Inclin. ceja
+              </button>
+              <button type="button" className={idxBtnCls(indexMode === "frontal-pupil")} onClick={() => startIndexMode("frontal-pupil")}>
+                👁 Interpupilar
+              </button>
+            </div>
+            <div className="text-xs text-ink space-y-0.5">
+              {(["cerv", "ceja", "pupil"] as const).map((key) => {
+                const hist = frontalAngleHistory[key];
+                if (hist.length === 0) return null;
+                const label = key === "cerv" ? "Cervicomental" : key === "ceja" ? "Inclin. ceja" : "Interpupilar";
+                const last = hist[hist.length - 1];
+                const avg = (hist.reduce((a, b) => a + b, 0) / hist.length).toFixed(1);
+                return (
+                  <p key={key}>
+                    {label}: {last}°{hist.length >= 2 ? ` (media ${hist.length}m: ${avg}°)` : ""}
+                  </p>
+                );
+              })}
+            </div>
           </div>
         )}
 
