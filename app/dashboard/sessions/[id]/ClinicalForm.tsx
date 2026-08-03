@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { generateReport } from "./actions";
-import BeforeAfterComparator from "./BeforeAfterComparator";
+import ComparadorTabContent from "./ComparadorTabContent";
 
 const MERZ_GROUPS = [
   {
@@ -1038,7 +1038,7 @@ export default function ClinicalForm({
 
         {/* ── Comparador ── */}
         <div className={tab === "Comparador" ? "space-y-5" : "hidden"}>
-          <BeforeAfterComparator />
+          <ComparadorTabContent photos={photos} />
         </div>
 
         {/* ── Informe ── */}

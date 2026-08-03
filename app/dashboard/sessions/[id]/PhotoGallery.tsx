@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { renderTriangleWarp, computeWarpDst, applyNeckTreatment, getFaceLandmarker } from "./warpEngine";
+import { getFaceLandmarker } from "./warpEngine";
 
 type Photo = {
   id: string;
@@ -167,11 +167,6 @@ function PhotoCard({
   const idxWrapRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [uvApplied, setUvApplied] = useState(false);
-  const warpCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [warpApplied, setWarpApplied] = useState(false);
-  const [warpIntensity, setWarpIntensity] = useState(0);
-  const [warpNeck, setWarpNeck] = useState(false);
-  const [warpError, setWarpError] = useState<string | null>(null);
 
   // ── MediaPipe (frontal) ──
   const landmarksRef = useRef<{ x: number; y: number }[] | null>(
@@ -339,39 +334,6 @@ function PhotoCard({
 
   function handleResetUV() {
     setUvApplied(false);
-  }
-
-  async function handleApplyWarp() {
-    setWarpError(null);
-    const lm = landmarksRef.current;
-    if (!lm) {
-      setWarpError("Detecta primero con MediaPipe (arriba) — sin los 468 puntos no hay malla que deformar.");
-      return;
-    }
-    const canvas = warpCanvasRef.current;
-    if (!canvas || !photo.url) return;
-
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("No se pudo cargar la foto."));
-      img.src = photo.url as string;
-    });
-
-    const W = img.naturalWidth;
-    const H = img.naturalHeight;
-    const landmarksPx = lm.map((p) => ({ x: p.x * W, y: p.y * H }));
-
-    const dst = computeWarpDst(landmarksPx, H, warpIntensity);
-    renderTriangleWarp(canvas, img, landmarksPx, dst);
-    if (warpNeck) applyNeckTreatment(canvas, landmarksPx);
-    setWarpApplied(true);
-  }
-
-  function handleResetWarp() {
-    setWarpApplied(false);
-    setWarpIntensity(0);
   }
 
   function drawLandmarks(landmarks: { x: number; y: number }[], showFrankfurt = false) {
@@ -710,12 +672,6 @@ function PhotoCard({
           />
         )}
         {isFrontal && (
-          <canvas
-            ref={warpCanvasRef}
-            className={`absolute inset-0 w-full h-full pointer-events-none ${warpApplied ? "" : "hidden"}`}
-          />
-        )}
-        {isFrontal && (
           <div
             ref={idxWrapRef}
             onClick={handleIndexClick}
@@ -855,57 +811,6 @@ function PhotoCard({
                 ⚠ Filtro simulado activo — no es un diagnóstico ni una medición real.
               </p>
             )}
-          </div>
-        )}
-
-        {isFrontal && (
-          <div className="mt-3 border-t border-rule pt-2">
-            <p className="text-[11px] font-semibold text-mid uppercase tracking-wide mb-1">
-              🧪 Simulación de resultado (cejas · mejillas · mandíbula)
-            </p>
-            <p className="text-[10px] text-mid mb-1">
-              Desplaza píxeles de la propia foto usando la malla de 468 puntos — no simula tejido, músculo ni piel. Empieza en 0% y sube poco a poco; para en cuanto se vea artificial. Necesita haber detectado con MediaPipe antes (arriba).
-            </p>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] text-mid min-w-[55px]">Intensidad</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={warpIntensity}
-                onChange={(e) => setWarpIntensity(Number(e.target.value))}
-                className="flex-1"
-              />
-              <span className="text-[10px] text-ink min-w-[30px] text-right">{warpIntensity}%</span>
-            </div>
-            <label className="flex items-center gap-1.5 text-[10px] text-ink mb-1">
-              <input type="checkbox" checked={warpNeck} onChange={(e) => setWarpNeck(e.target.checked)} />
-              Incluir cuello (solo luz/suavizado, sin desplazar geometría)
-            </label>
-            <div className="flex gap-1 flex-wrap mb-1">
-              <button
-                type="button"
-                onClick={handleApplyWarp}
-                className="text-[10px] rounded-full px-2 py-1 bg-accent text-white hover:opacity-90"
-              >
-                ✨ Aplicar simulación
-              </button>
-              {warpApplied && (
-                <button
-                  type="button"
-                  onClick={handleResetWarp}
-                  className="text-[10px] rounded-full px-2 py-1 bg-white border border-rule text-ink hover:border-accent/50"
-                >
-                  ↺ Ver original
-                </button>
-              )}
-            </div>
-            {warpApplied && (
-              <p className="text-[10px] text-amber-700">
-                ⚠ Simulación visual educativa al {warpIntensity}% — NO es una predicción médica del resultado real.
-              </p>
-            )}
-            {warpError && <p className="text-[10px] text-red-700">{warpError}</p>}
           </div>
         )}
 

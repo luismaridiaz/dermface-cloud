@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { renderTriangleWarp, detectLandmarksFrac, type Pt } from "./warpEngine";
 
-export default function BeforeAfterComparator() {
+export default function BeforeAfterComparator({
+  autoBeforeUrl,
+  autoAfterDataUrl,
+}: {
+  autoBeforeUrl?: string;
+  autoAfterDataUrl?: string;
+} = {}) {
   const beforeImgRef = useRef<HTMLImageElement>(new Image());
   const afterImgRef = useRef<HTMLImageElement>(new Image());
   const beforePreviewRef = useRef<HTMLCanvasElement>(null);
@@ -22,32 +28,47 @@ export default function BeforeAfterComparator() {
 
   function loadFile(file: File | null, which: "before" | "after") {
     if (!file) return;
-    if (which === "before") setBeforeLm(null);
-    else setAfterLm(null);
-
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const img = which === "before" ? beforeImgRef.current : afterImgRef.current;
-      img.onload = async () => {
-        if (which === "before") {
-          setBeforeReady(true);
-          drawBeforePreview();
-        } else {
-          setAfterReady(true);
-        }
-        setAligning(true);
-        try {
-          const lm = await detectLandmarksFrac(img);
-          if (which === "before") setBeforeLm(lm);
-          else setAfterLm(lm);
-        } finally {
-          setAligning(false);
-        }
-      };
-      img.src = ev.target?.result as string;
+      loadFromSrc(ev.target?.result as string, which);
     };
     reader.readAsDataURL(file);
   }
+
+  function loadFromSrc(src: string, which: "before" | "after") {
+    if (which === "before") setBeforeLm(null);
+    else setAfterLm(null);
+
+    const img = which === "before" ? beforeImgRef.current : afterImgRef.current;
+    img.crossOrigin = "anonymous";
+    img.onload = async () => {
+      if (which === "before") {
+        setBeforeReady(true);
+        drawBeforePreview();
+      } else {
+        setAfterReady(true);
+      }
+      setAligning(true);
+      try {
+        const lm = await detectLandmarksFrac(img);
+        if (which === "before") setBeforeLm(lm);
+        else setAfterLm(lm);
+      } finally {
+        setAligning(false);
+      }
+    };
+    img.src = src;
+  }
+
+  useEffect(() => {
+    if (autoBeforeUrl) loadFromSrc(autoBeforeUrl, "before");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBeforeUrl]);
+
+  useEffect(() => {
+    if (autoAfterDataUrl) loadFromSrc(autoAfterDataUrl, "after");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAfterDataUrl]);
 
   function drawBeforePreview() {
     const c = beforePreviewRef.current;
