@@ -1038,7 +1038,7 @@ export default function ClinicalForm({
 
         {/* ── Comparador ── */}
         <div className={tab === "Comparador" ? "space-y-5" : "hidden"}>
-          <ComparadorTabContent photos={photos} />
+          <ComparadorTabContent photos={photos} clinical={d} sessionId={sessionId} />
         </div>
 
         {/* ── Informe ── */}

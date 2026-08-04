@@ -37,6 +37,9 @@ export type ClinicalInput = {
   sebo: number | null;
   eritema: number | null;
   tewl: number | null;
+  sim_aplicada?: boolean | null;
+  sim_intensidad?: number | null;
+  sim_modo?: string | null;
 };
 
 export type FrontalPhoto = {
@@ -268,6 +271,10 @@ export function buildReport(
   const gais30 = mDA > 2 ? "GAIS +2: reducción Merz dyn ≥1pt. Valorar asimetría residual." : "GAIS +1: mejora textura. Reevaluar dinámica.";
   const gais90 = nauA > 1 ? "GAIS +2 a +3: apreciación volumétrica. FACE-Q >70/100." : "GAIS +1 a +2: consolidación bioestimulación.";
 
+  const simLine = c.sim_aplicada
+    ? `Simulación de resultado: aplicada (${c.sim_modo === "plan" ? "según plan de tratamiento" : "manual"}, intensidad ${c.sim_intensidad ?? "—"}%) — ⚠ solo ilustrativa, no es una predicción médica del resultado real.`
+    : "Simulación de resultado: no aplicada en esta sesión.";
+
   const cab =
     `INFORME CLÍNICO — DermFace Cloud\n` +
     `Fecha: ${fecha}\n` +
@@ -291,6 +298,7 @@ export function buildReport(
     "V. PLAN (barrera→piel→soporte→volumen→dinámica)\n" + plan.join("\n\n") + "\n\n" +
     "VI. SEGUIMIENTO GAIS\n" +
     `Basal: ${gaisB}\n30 días: ${gais30}\n90 días: ${gais90}\nRetratamiento: retorno a basal o >50% pérdida de efecto.\n\n` +
+    "VII. SIMULACIÓN VISUAL\n" + simLine + "\n\n" +
     "──────────────────────────────\n" +
     "Motor de reglas DermFace Cloud (local, sin IA externa). El juicio clínico prevalece siempre."
   );

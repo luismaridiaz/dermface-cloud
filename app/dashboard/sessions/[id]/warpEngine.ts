@@ -8,9 +8,14 @@ export const MESH_TRI: number[] = [127,34,139,11,0,37,232,231,120,72,37,39,128,1
 export const MESH_CONTOURS = {
   leftBrow: [276, 283, 282, 295, 285, 293, 334, 296, 336],
   rightBrow: [46, 53, 52, 65, 55, 63, 105, 66, 107],
+  faceOval: [
+    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379,
+    378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127,
+    162, 21, 54, 103, 67, 109,
+  ],
 };
 
-export type Pt = { x: number; y: number };
+export type Pt = { x: number; y: number; z?: number };
 
 // Cargador compartido del modelo MediaPipe — una sola instancia para toda la
 // app (PhotoGallery y BeforeAfterComparator la reutilizan), así no se
@@ -45,7 +50,7 @@ export async function detectLandmarksFrac(img: HTMLImageElement): Promise<Pt[] |
   const result = landmarker.detect(img);
   const lm = result.faceLandmarks?.[0];
   if (!lm) return null;
-  return lm.map((p: Pt) => ({ x: p.x, y: p.y }));
+  return lm.map((p: Pt) => ({ x: p.x, y: p.y, z: p.z }));
 }
 
 type Mat = [number, number, number, number, number, number];
@@ -126,15 +131,26 @@ function taperedRegion(
   });
 }
 
-export const WARP_REGIONS = ([] as { idx: number; dx: number; dy: number }[])
+const BROW_REGIONS = ([] as { idx: number; dx: number; dy: number }[])
   .concat(taperedRegion(MESH_CONTOURS.leftBrow, 0, -1))
-  .concat(taperedRegion(MESH_CONTOURS.rightBrow, 0, -1))
+  .concat(taperedRegion(MESH_CONTOURS.rightBrow, 0, -1));
+
+const CHEEK_REGIONS = ([] as { idx: number; dx: number; dy: number }[])
   .concat(taperedRegion([36, 205, 206, 207, 187, 123, 116, 117, 118, 119, 100, 47], 0.3, -1))
-  .concat(taperedRegion([266, 425, 426, 427, 411, 352, 345, 346, 347, 348, 329, 277], -0.3, -1))
+  .concat(taperedRegion([266, 425, 426, 427, 411, 352, 345, 346, 347, 348, 329, 277], -0.3, -1));
+
+const JAW_REGIONS = ([] as { idx: number; dx: number; dy: number }[])
   .concat(taperedRegion([234, 127, 162], 0.2, -0.6))
   .concat(taperedRegion([454, 356, 389], -0.2, -0.6))
   .concat(taperedRegion([234, 93, 132, 58, 172, 136, 150, 149, 176, 148], 0.4, -0.3))
   .concat(taperedRegion([454, 323, 361, 288, 397, 365, 379, 378, 400, 377], -0.4, -0.3));
+
+const MENTON_REGION = taperedRegion([175, 199, 200, 201, 421, 152], 0, 0.6);
+
+export const WARP_REGIONS = ([] as { idx: number; dx: number; dy: number }[])
+  .concat(BROW_REGIONS)
+  .concat(CHEEK_REGIONS)
+  .concat(JAW_REGIONS);
 
 export function computeWarpDst(
   landmarksPx: Pt[],
@@ -152,7 +168,79 @@ export function computeWarpDst(
   return dst;
 }
 
+// ── Simulación conectada al plan de tratamiento ──
+// Cada zona se mueve según su propio factor (0-1) derivado del diagnóstico,
+// en vez de una única intensidad para toda la cara.
+export type PlanSimParams = {
+  liftBrow: number; // cejas — de Merz dinámica + indicación de toxina
+  liftCheeks: number; // mejillas/pómulos — de laxitud + NAU
+  jawline: number; // mandíbula — de laxitud + indicación HIFU
+  volumeMalar: number; // proyección malar — de NAU + indicación de relleno
+  volumeMenton: number; // volumen de mentón — de NAU + indicación de relleno
+  skinSmooth: number; // suavizado de textura — de Glogau
+};
+
+export function computeWarpDstFromPlan(
+  landmarksPx: Pt[],
+  faceHeightPx: number,
+  intensityPct: number,
+  params: PlanSimParams
+): Pt[] {
+  const dst = landmarksPx.map((p) => ({ x: p.x, y: p.y }));
+  const maxPx = faceHeightPx * 0.018;
+  const k = (intensityPct / 100) * maxPx;
+
+  // Nivel 1 de "3D ligero": usa la Z que MediaPipe ya calcula (profundidad
+  // relativa, no una reconstrucción 3D real) para que las zonas más
+  // protuberantes (más cerca de la cámara, z más negativa) se desplacen
+  // algo más que las zonas más hundidas/laterales — sin esto, todos los
+  // puntos se movían igual sin importar su relieve real.
+  function depthFactor(idx: number): number {
+    const z = landmarksPx[idx]?.z;
+    if (z == null) return 1;
+    return Math.max(0.7, Math.min(1.3, 1 - z * 3));
+  }
+
+  function applyGroup(regions: { idx: number; dx: number; dy: number }[], weight: number, extraDx = 0) {
+    regions.forEach((r) => {
+      if (!dst[r.idx]) return;
+      const df = depthFactor(r.idx);
+      dst[r.idx].x = landmarksPx[r.idx].x + (r.dx * weight + extraDx * Math.sign(r.dx || 1)) * k * df;
+      dst[r.idx].y = landmarksPx[r.idx].y + r.dy * weight * k * df;
+    });
+  }
+
+  applyGroup(BROW_REGIONS, params.liftBrow);
+  applyGroup(CHEEK_REGIONS, params.liftCheeks, params.volumeMalar * 0.5);
+  applyGroup(JAW_REGIONS, params.jawline);
+  applyGroup(MENTON_REGION, params.volumeMenton);
+  return dst;
+}
+
 // ── CUELLO: solo luz/suavizado, SIN geometría (sin landmarks fiables ahí) ──
+// Suavizado de textura sobre el óvalo facial completo — proxy visual de
+// mejora de calidad cutánea (peeling/láser/skin booster), sin analizar
+// poros ni arrugas reales.
+export function applySkinSmoothing(canvas: HTMLCanvasElement, landmarksPx: Pt[], weight: number) {
+  if (weight <= 0) return;
+  const poly = MESH_CONTOURS.faceOval.map((i) => landmarksPx[i]).filter(Boolean);
+  if (poly.length < 3) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(poly[0].x, poly[0].y);
+  for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.filter = `blur(${(1 + weight * 1.5).toFixed(1)}px)`;
+  ctx.globalAlpha = Math.min(0.5, weight * 0.5);
+  ctx.drawImage(canvas, 0, 0);
+  ctx.filter = "none";
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 export function applyNeckTreatment(canvas: HTMLCanvasElement, landmarksPx: Pt[]) {
   const idxs = [172, 150, 149, 176, 148, 152, 377, 400, 378, 379, 397];
   const top = idxs.map((i) => landmarksPx[i]);
