@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { logout } from "../login/actions";
 import { redirect } from "next/navigation";
@@ -25,7 +26,16 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen">
       <header className="bg-ink text-paper px-6 py-3 flex items-center justify-between">
-        <div className="font-bold tracking-wide">DermFace Cloud</div>
+        <div className="flex items-center gap-5">
+          <Link href="/dashboard" className="font-bold tracking-wide">
+            DermFace Cloud
+          </Link>
+          {profile?.role === "doctor" && (
+            <Link href="/dashboard/team" className="text-sm text-mid hover:text-paper transition">
+              Equipo
+            </Link>
+          )}
+        </div>
         <div className="flex items-center gap-4 text-sm">
           <span className="text-mid">
             {profile?.full_name ?? user.email} · <span className="text-accent">{roleLabel}</span>
